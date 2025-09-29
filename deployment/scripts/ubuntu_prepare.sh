@@ -165,30 +165,8 @@ configure_firewall() {
     fi
 }
 
-# 创建项目目录
-create_project_directory() {
-    print_title "创建项目目录"
-
-    PROJECT_DIR="${HOME}/mrdoc-server"
-
-    if [ -d "$PROJECT_DIR" ]; then
-        print_warning "项目目录已存在: $PROJECT_DIR"
-        read -p "是否删除并重新创建? (y/N): " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            rm -rf "$PROJECT_DIR"
-        else
-            print_message "使用现有目录: $PROJECT_DIR"
-            return 0
-        fi
-    fi
-
-    mkdir -p "$PROJECT_DIR"/{config,data,logs,media,static}
-    cd "$PROJECT_DIR"
-
-    print_message "项目目录创建完成: $PROJECT_DIR"
-    echo "$PROJECT_DIR" > /tmp/mrdoc_project_path
-}
+# 注意：已移除 create_project_directory 函数
+# 原因：该功能在实际部署流程中不被使用，属于无用功能
 
 # 优化系统参数
 optimize_system() {
@@ -237,26 +215,23 @@ install_tools() {
 show_result() {
     print_title "安装完成"
 
-    PROJECT_DIR=$(cat /tmp/mrdoc_project_path 2>/dev/null || echo "${HOME}/mrdoc-server")
-
     echo -e "${GREEN}🎉 MrDoc 环境准备完成！${NC}"
     echo
     echo -e "${BLUE}📋 系统信息:${NC}"
     echo -e "   OS: $(lsb_release -ds)"
     echo -e "   Docker: $(docker --version)"
     echo -e "   Docker Compose: $(docker-compose --version)"
-    echo -e "   项目目录: $PROJECT_DIR"
     echo
     echo -e "${BLUE}📋 下一步操作:${NC}"
     echo -e "   1. 重新登录或运行: newgrp docker"
-    echo -e "   2. 进入项目目录: cd $PROJECT_DIR"
-    echo -e "   3. 下载 MrDoc 部署文件"
-    echo -e "   4. 运行部署脚本"
+    echo -e "   2. 下载或准备 MrDoc 部署文件"
+    echo -e "   3. 运行 MrDoc 部署脚本"
     echo
     echo -e "${YELLOW}📝 注意事项:${NC}"
     echo -e "   - 请确保服务器有足够的内存 (推荐 2GB+)"
     echo -e "   - 请确保防火墙已正确配置"
     echo -e "   - 建议配置域名和 SSL 证书"
+    echo -e "   - 部署脚本会自动确定项目目录"
     echo
 }
 
@@ -270,7 +245,7 @@ main() {
     install_docker
     install_docker_compose
     configure_firewall
-    create_project_directory
+    # create_project_directory  # 已移除：无用的目录创建功能
     optimize_system
     install_tools
     show_result
