@@ -42,6 +42,51 @@ MRDOC_REPO_URL="https://github.com/0852FeiFeiLin/mrdocs.git"
 MRDOC_BRANCH="master"
 DOMAIN_NAME="localhost"
 
+# GitHub镜像源配置
+GITHUB_MIRRORS=(
+    ""  # 官方源
+    "https://gh-proxy.com/"
+    "https://ghfast.top/"
+    "https://gh.api.99988866.xyz/"
+    "https://mirror.ghproxy.com/"
+)
+
+# Git克隆函数（支持镜像源）
+git_clone_with_mirrors() {
+    local repo_url="$1"
+    local target_dir="$2"
+    local branch="${3:-}"
+
+    print_message "正在尝试克隆仓库..."
+
+    for mirror in "${GITHUB_MIRRORS[@]}"; do
+        local full_url="${mirror}${repo_url}"
+
+        if [ -z "$mirror" ]; then
+            print_message "尝试GitHub官方源: $repo_url"
+        else
+            print_message "尝试镜像源: $mirror"
+        fi
+
+        local git_cmd="git clone"
+        if [ -n "$branch" ]; then
+            git_cmd="$git_cmd -b $branch"
+        fi
+        git_cmd="$git_cmd $full_url $target_dir"
+
+        if timeout 60 $git_cmd 2>/dev/null; then
+            print_success "克隆成功！使用源: ${mirror:-GitHub官方}"
+            return 0
+        else
+            print_warning "克隆失败，尝试下一个源..."
+            rm -rf "$target_dir" 2>/dev/null || true
+        fi
+    done
+
+    print_error "所有Git源都无法访问，请检查网络或手动上传源码"
+    return 1
+}
+
 # 显示欢迎信息
 show_welcome() {
     print_title "MrDoc 二次开发版本部署脚本"
@@ -61,7 +106,7 @@ handle_empty_repository() {
 
     # 先尝试克隆仓库检查是否为空
     temp_dir=$(mktemp -d)
-    if git clone "$MRDOC_REPO_URL" "$temp_dir/test" 2>/dev/null; then
+    if git_clone_with_mirrors "$MRDOC_REPO_URL" "$temp_dir/test"; then
         if [ ! "$(ls -A $temp_dir/test)" ] || [ ! -f "$temp_dir/test/manage.py" ]; then
             print_warning "检测到空仓库或缺少Django项目文件"
             rm -rf "$temp_dir"
@@ -143,11 +188,61 @@ get_user_config() {
 
         read -p "项目名称 [${PROJECT_NAME}]: " input_project
         PROJECT_NAME=${input_project:-$PROJECT_NAME}
-        PROJECT_DIR="${HOME}/${PROJECT_NAME}"
+
+        echo
+        print_message "项目目录配置："
+        echo -e "  1) 使用默认目录: ${HOME}/${PROJECT_NAME}"
+        echo -e "  2) 自定义完整路径"
+        read -p "选择项目目录 (1-2) [1]: " -n 1 -r dir_choice
+        echo
+
+        case ${dir_choice:-1} in
+            2)
+                while true; do
+                    read -p "请输入完整项目路径 [${PROJECT_DIR}]: " input_dir
+                    PROJECT_DIR=${input_dir:-$PROJECT_DIR}
+
+                    # 验证路径格式
+                    if [[ ! "$PROJECT_DIR" =~ ^/ ]]; then
+                        PROJECT_DIR="${HOME}/${PROJECT_DIR}"
+                        print_warning "相对路径已转换为: $PROJECT_DIR"
+                    fi
+
+                    # 检查父目录是否存在或可创建
+                    parent_dir=$(dirname "$PROJECT_DIR")
+                    if [ -d "$parent_dir" ] || mkdir -p "$parent_dir" 2>/dev/null; then
+                        print_success "项目目录设置为: $PROJECT_DIR"
+                        break
+                    else
+                        print_error "无法创建父目录: $parent_dir，请重新输入"
+                    fi
+                done
+                ;;
+            *)
+                PROJECT_DIR="${HOME}/${PROJECT_NAME}"
+                ;;
+        esac
     fi
 
     read -p "域名 [${DOMAIN_NAME}]: " input_domain
     DOMAIN_NAME=${input_domain:-$DOMAIN_NAME}
+
+    # 显示最终配置
+    echo
+    print_title "最终部署配置"
+    echo -e "${GREEN}✅ 仓库地址: ${YELLOW}$MRDOC_REPO_URL${NC}"
+    echo -e "${GREEN}✅ 分支: ${YELLOW}$MRDOC_BRANCH${NC}"
+    echo -e "${GREEN}✅ 项目名称: ${YELLOW}$PROJECT_NAME${NC}"
+    echo -e "${GREEN}✅ 项目目录: ${YELLOW}$PROJECT_DIR${NC}"
+    echo -e "${GREEN}✅ 访问域名: ${YELLOW}$DOMAIN_NAME${NC}"
+    echo
+
+    read -p "确认以上配置开始部署? (y/N): " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        print_warning "部署已取消"
+        exit 0
+    fi
 }
 
 # 准备源码
@@ -203,9 +298,9 @@ EOF
             rm -rf source
         fi
 
-        git clone -b "$MRDOC_BRANCH" "$MRDOC_REPO_URL" source || {
+        git_clone_with_mirrors "$MRDOC_REPO_URL" source "$MRDOC_BRANCH" || {
             print_warning "指定分支不存在，尝试默认分支..."
-            git clone "$MRDOC_REPO_URL" source
+            git_clone_with_mirrors "$MRDOC_REPO_URL" source
         }
 
         cp -r source/* .
@@ -246,7 +341,7 @@ services:
     container_name: ${PROJECT_NAME}-app
     restart: unless-stopped
     ports:
-      - "8000:8000"  # 直接暴露端口，方便开发
+      - "8081:8081"  # 直接暴露端口，方便开发
     volumes:
       - ./:/app/source  # 挂载源码目录，支持热更新
       - ./media:/app/media
