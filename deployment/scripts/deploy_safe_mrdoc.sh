@@ -37,7 +37,9 @@ print_success() {
 
 # 默认配置
 PROJECT_NAME="mrdocs-safe"
-PROJECT_DIR="${HOME}/${PROJECT_NAME}"
+# 获取脚本所在目录的上上级目录 (../../)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 MRDOC_REPO_URL="https://github.com/0852FeiFeiLin/mrdocs.git"
 MRDOC_BRANCH="master"
 DOMAIN_NAME="localhost"
@@ -308,7 +310,7 @@ get_user_config() {
 
         echo
         print_message "项目目录配置："
-        echo -e "  1) 使用默认目录: ${HOME}/${PROJECT_NAME}"
+        echo -e "  1) 使用默认目录: $PROJECT_DIR"
         echo -e "  2) 自定义完整路径"
         read -p "选择项目目录 (1-2) [1]: " -n 1 -r dir_choice
         echo
@@ -336,7 +338,7 @@ get_user_config() {
                 done
                 ;;
             *)
-                PROJECT_DIR="${HOME}/${PROJECT_NAME}"
+                # 使用已设置的默认PROJECT_DIR（脚本目录的../../）
                 ;;
         esac
 
