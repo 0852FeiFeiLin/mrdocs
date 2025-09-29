@@ -36,10 +36,10 @@ print_success() {
 }
 
 # 默认配置（针对你的二次开发仓库）
-PROJECT_NAME="mrdocs-custom"
+PROJECT_NAME="mrdocs"
 PROJECT_DIR="${HOME}/${PROJECT_NAME}"
 MRDOC_REPO_URL="https://github.com/0852FeiFeiLin/mrdocs.git"
-MRDOC_BRANCH="main"
+MRDOC_BRANCH="master"
 DOMAIN_NAME="localhost"
 
 # 显示欢迎信息
