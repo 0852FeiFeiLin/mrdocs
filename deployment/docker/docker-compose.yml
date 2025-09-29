@@ -1,0 +1,163 @@
+version: '3.8'
+
+services:
+  # MrDoc 主应用
+  mrdoc:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mrdoc-app
+    restart: unless-stopped
+    command: gunicorn  # 生产环境使用 gunicorn
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./media:/app/media              # 媒体文件持久化
+      - ./logs:/app/logs                # 日志文件
+      - ./static:/app/static            # 静态文件
+      - ./config:/app/config            # 配置文件
+      - ./source:/app                   # 源码挂载（便于开发）
+    environment:
+      # 数据库配置
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_NAME=mrdoc
+      - DB_USER=mrdoc
+      - DB_PASSWORD=mrdoc_password_2024
+
+      # Redis 配置
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=redis_password_2024
+
+      # Django 配置
+      - DJANGO_SETTINGS_MODULE=MrDoc.settings
+      - DJANGO_SECRET_KEY=your-very-secret-key-change-in-production-2024
+      - DJANGO_DEBUG=False
+      - DJANGO_ALLOWED_HOSTS=*
+
+      # 超级用户配置
+      - DJANGO_SUPERUSER_USERNAME=admin
+      - DJANGO_SUPERUSER_EMAIL=admin@example.com
+      - DJANGO_SUPERUSER_PASSWORD=admin123456
+
+      # 其他配置
+      - TZ=Asia/Shanghai
+    networks:
+      - mrdoc-network
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # MySQL 数据库
+  mysql:
+    image: mysql:8.0
+    container_name: mrdoc-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password_2024
+      MYSQL_DATABASE: mrdoc
+      MYSQL_USER: mrdoc
+      MYSQL_PASSWORD: mrdoc_password_2024
+      MYSQL_CHARACTER_SET_SERVER: utf8mb4
+      MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql/conf.d:/etc/mysql/conf.d
+      - ./mysql/init:/docker-entrypoint-initdb.d
+    ports:
+      - "3306:3306"  # 可选：外部访问端口
+    networks:
+      - mrdoc-network
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --default-authentication-plugin=mysql_native_password
+      --max_connections=1000
+      --innodb_buffer_pool_size=256M
+      --query_cache_size=64M
+      --tmp_table_size=64M
+      --max_heap_table_size=64M
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$$MYSQL_ROOT_PASSWORD"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # Redis 缓存
+  redis:
+    image: redis:7-alpine
+    container_name: mrdoc-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf
+    ports:
+      - "6379:6379"  # 可选：外部访问端口
+    networks:
+      - mrdoc-network
+    command: redis-server /usr/local/etc/redis/redis.conf
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 3s
+      retries: 5
+
+  # Nginx 反向代理
+  nginx:
+    image: nginx:alpine
+    container_name: mrdoc-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/ssl:/etc/nginx/ssl          # SSL 证书目录
+      - ./static:/var/www/static            # 静态文件
+      - ./media:/var/www/media              # 媒体文件
+      - ./logs/nginx:/var/log/nginx         # Nginx 日志
+    networks:
+      - mrdoc-network
+    depends_on:
+      - mrdoc
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+# 数据卷定义
+volumes:
+  mysql_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/data/mysql
+  redis_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/data/redis
+
+# 网络定义
+networks:
+  mrdoc-network:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.30.0.0/16
+          gateway: 172.30.0.1
