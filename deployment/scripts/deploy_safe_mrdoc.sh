@@ -504,6 +504,7 @@ EOF
       MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
     volumes:
       - ${CONTAINER_PREFIX}_mysql_data:/var/lib/mysql
+      - ../docker/mysql-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     ports:
       - "${MYSQL_PORT}:3306"
     networks:
@@ -628,6 +629,20 @@ main() {
 
     # 创建必要的配置文件
     print_message "创建配置文件..."
+
+    # 创建MySQL初始化脚本
+    cat > deployment/docker/mysql-init.sql << 'EOF'
+-- MySQL初始化脚本
+-- 确保mrdoc用户有正确的权限
+
+-- 创建数据库
+CREATE DATABASE IF NOT EXISTS mrdoc CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- 确保用户权限（MySQL 5.7会自动创建MYSQL_USER，这里补充权限）
+GRANT ALL PRIVILEGES ON *.* TO 'mrdoc'@'%' WITH GRANT OPTION;
+GRANT ALL PRIVILEGES ON mrdoc.* TO 'mrdoc'@'%';
+FLUSH PRIVILEGES;
+EOF
 
     # 创建entrypoint.sh
     cat > deployment/docker/entrypoint.sh << 'EOF'
