@@ -434,7 +434,7 @@ EOF
       - DB_HOST=${CONTAINER_PREFIX}-mysql
       - DB_PORT=3306
       - DB_USER=mrdoc
-      - DB_PASSWORD=mrdoc_safe_password_$(date +%s)
+      - DB_PASSWORD=mrdocpassword123
 EOF
     fi
 
@@ -451,7 +451,7 @@ EOF
         cat >> deployment/docker/docker-compose.yml << EOF
       - REDIS_HOST=${CONTAINER_PREFIX}-redis
       - REDIS_PORT=6379
-      - REDIS_PASSWORD=redis_safe_password_$(date +%s)
+      - REDIS_PASSWORD=redispassword123
 EOF
     fi
 
@@ -489,23 +489,19 @@ EOF
     container_name: ${CONTAINER_PREFIX}-mysql
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: root_safe_password_$(date +%s)
+      MYSQL_ROOT_PASSWORD: rootpassword123
       MYSQL_DATABASE: mrdoc
       MYSQL_USER: mrdoc
-      MYSQL_PASSWORD: mrdoc_safe_password_$(date +%s)
+      MYSQL_PASSWORD: mrdocpassword123
       MYSQL_CHARACTER_SET_SERVER: utf8mb4
       MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
     volumes:
       - ${CONTAINER_PREFIX}_mysql_data:/var/lib/mysql
-      - ../config/my.cnf:/etc/mysql/conf.d/my.cnf
     ports:
       - "${MYSQL_PORT}:3306"
     networks:
       - ${CONTAINER_PREFIX}-network
-    command: >
-      --character-set-server=utf8mb4
-      --collation-server=utf8mb4_unicode_ci
-      --default-authentication-plugin=mysql_native_password
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --default-authentication-plugin=mysql_native_password
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 30s
@@ -525,14 +521,13 @@ EOF
     restart: unless-stopped
     volumes:
       - ${CONTAINER_PREFIX}_redis_data:/data
-      - ../config/redis.conf:/usr/local/etc/redis/redis.conf
     ports:
       - "${REDIS_PORT}:6379"
     networks:
       - ${CONTAINER_PREFIX}-network
-    command: redis-server /usr/local/etc/redis/redis.conf
+    command: redis-server --requirepass redispassword123 --databases 16
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "redispassword123", "ping"]
       interval: 30s
       timeout: 3s
       retries: 5
@@ -634,7 +629,19 @@ main() {
 
     # 等待服务启动
     print_message "等待服务启动..."
-    sleep 30
+    sleep 60
+
+    # 检查MySQL是否就绪
+    print_message "检查MySQL服务状态..."
+    for i in {1..30}; do
+        if docker-compose -f deployment/docker/docker-compose.yml exec -T ${CONTAINER_PREFIX}-mysql mysqladmin ping -h localhost --silent 2>/dev/null; then
+            print_success "MySQL服务已就绪"
+            break
+        fi
+        echo -n "."
+        sleep 2
+    done
+    echo
 
     # 数据库迁移
     print_message "执行数据库迁移..."
