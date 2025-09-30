@@ -50,7 +50,7 @@ RUN pip install --no-cache-dir --user \
     mysqlclient==2.2.0
 
 # 复制启动脚本
-COPY --chown=mrdoc:mrdoc deployment/docker/entrypoint.sh /app/entrypoint.sh
+COPY --chown=mrdoc:mrdoc docker/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
 # 暴露端口

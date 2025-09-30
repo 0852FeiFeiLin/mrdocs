@@ -409,8 +409,8 @@ services:
   # MrDoc 主应用
   ${CONTAINER_PREFIX}-app:
     build:
-      context: ..
-      dockerfile: deployment/docker/Dockerfile.mrdoc
+      context: .
+      dockerfile: docker/Dockerfile.mrdoc
     container_name: ${CONTAINER_PREFIX}-app
     restart: unless-stopped
     ports:
@@ -631,6 +631,11 @@ main() {
         if [ -d "deployment/docker" ]; then
             cp -r deployment/docker ./
             print_message "已复制docker配置"
+            # 复制.dockerignore到项目根目录
+            if [ -f "docker/.dockerignore" ]; then
+                cp docker/.dockerignore ./.dockerignore
+                print_message "已复制.dockerignore文件"
+            fi
         else
             print_warning "docker配置目录不存在，将创建基础配置"
             mkdir -p docker

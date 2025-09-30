@@ -1,0 +1,19 @@
+# 忽略部署相关目录
+deployment/
+docker/
+nginx/
+config/
+
+# 忽略Git相关
+.git/
+.gitignore
+
+# 忽略IDE文件
+.vscode/
+.idea/
+*.pyc
+__pycache__/
+
+# 忽略日志文件
+*.log
+logs/
