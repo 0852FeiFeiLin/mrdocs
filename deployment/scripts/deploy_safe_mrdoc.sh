@@ -401,7 +401,7 @@ get_user_config() {
 create_safe_docker_compose() {
     print_title "生成安全Docker配置"
 
-    # 创建docker-compose.yml
+    # 创建docker-compose.yml（不使用version属性以避免警告）
     cat > deployment/docker/docker-compose.yml << EOF
 services:
   # MrDoc 主应用
@@ -485,7 +485,7 @@ EOF
 
   # MySQL 数据库
   ${CONTAINER_PREFIX}-mysql:
-    image: mysql:8.0
+    image: mysql:5.7
     container_name: ${CONTAINER_PREFIX}-mysql
     restart: unless-stopped
     environment:
@@ -501,7 +501,7 @@ EOF
       - "${MYSQL_PORT}:3306"
     networks:
       - ${CONTAINER_PREFIX}-network
-    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --default-authentication-plugin=mysql_native_password --skip-ssl
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 30s
@@ -619,6 +619,243 @@ main() {
     # 确保部署目录存在
     mkdir -p deployment/docker
 
+    # 创建必要的配置文件
+    print_message "创建配置文件..."
+
+    # 创建entrypoint.sh
+    cat > deployment/docker/entrypoint.sh << 'EOF'
+#!/bin/bash
+
+set -e
+
+# 颜色输出
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+echo_info() {
+    echo -e "${GREEN}[INFO]${NC} $1"
+}
+
+echo_warn() {
+    echo -e "${YELLOW}[WARN]${NC} $1"
+}
+
+echo_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+echo_info "🚀 启动 MrDoc 应用..."
+
+# 使用Python检查数据库连接
+echo_info "⏳ 等待数据库服务启动..."
+python << 'PYTHON_EOF'
+import time
+import os
+import sys
+
+try:
+    import MySQLdb
+except ImportError:
+    print("[ERROR] MySQLdb模块未安装")
+    sys.exit(1)
+
+max_retries = 30
+retry_count = 0
+db_host = os.environ.get('DB_HOST', 'localhost')
+db_user = os.environ.get('DB_USER', 'mrdoc')
+db_password = os.environ.get('DB_PASSWORD', 'mrdocpassword123')
+db_port = int(os.environ.get('DB_PORT', '3306'))
+
+while retry_count < max_retries:
+    try:
+        conn = MySQLdb.connect(
+            host=db_host,
+            user=db_user,
+            passwd=db_password,
+            port=db_port,
+            connect_timeout=5
+        )
+        conn.close()
+        print("[INFO] ✅ 数据库连接成功!")
+        break
+    except Exception as e:
+        retry_count += 1
+        print(f"[WARN] 等待数据库 ({retry_count}/{max_retries})...")
+        time.sleep(5)
+
+if retry_count == max_retries:
+    print(f"[ERROR] 无法连接到数据库 {db_host}:{db_port}")
+    sys.exit(1)
+PYTHON_EOF
+
+cd /app
+
+# 创建数据库
+echo_info "📊 确保数据库存在..."
+python << 'PYTHON_EOF'
+import os
+import MySQLdb
+
+try:
+    conn = MySQLdb.connect(
+        host=os.environ.get('DB_HOST', 'localhost'),
+        user=os.environ.get('DB_USER', 'mrdoc'),
+        passwd=os.environ.get('DB_PASSWORD', 'mrdocpassword123'),
+        port=int(os.environ.get('DB_PORT', '3306'))
+    )
+    cursor = conn.cursor()
+    db_name = os.environ.get('DB_NAME', 'mrdoc')
+    cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
+    conn.commit()
+    conn.close()
+    print(f"[INFO] 数据库 {db_name} 已准备就绪")
+except Exception as e:
+    print(f"[WARN] {e}")
+PYTHON_EOF
+
+# Django操作
+echo_info "🔄 执行数据库迁移..."
+python manage.py makemigrations --noinput
+python manage.py migrate --noinput
+
+echo_info "📁 收集静态文件..."
+python manage.py collectstatic --noinput --clear
+
+echo_info "👤 创建超级用户..."
+python manage.py shell << PYTHON_EOF
+import os
+from django.contrib.auth.models import User
+username = os.environ.get('DJANGO_SUPERUSER_USERNAME', 'admin')
+email = os.environ.get('DJANGO_SUPERUSER_EMAIL', 'admin@example.com')
+password = os.environ.get('DJANGO_SUPERUSER_PASSWORD', 'admin123456')
+if not User.objects.filter(username=username).exists():
+    User.objects.create_superuser(username, email, password)
+    print(f"✅ 超级用户创建成功: {username}")
+else:
+    print(f"ℹ️ 超级用户已存在: {username}")
+PYTHON_EOF
+
+# 创建目录
+mkdir -p /app/media/uploads /app/logs
+chmod -R 755 /app/media /app/static
+
+echo_info "🎉 MrDoc 初始化完成!"
+
+# 启动服务
+exec gunicorn --bind 0.0.0.0:8000 --workers 4 --timeout 120 --log-level info --access-logfile - --error-logfile - MrDoc.wsgi:application
+EOF
+    chmod +x deployment/docker/entrypoint.sh
+
+    # 创建Dockerfile.mrdoc
+    cat > deployment/docker/Dockerfile.mrdoc << 'EOF'
+FROM python:3.11-slim
+
+WORKDIR /app
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV DJANGO_SETTINGS_MODULE=MrDoc.settings
+
+# 安装系统依赖
+RUN apt-get update && apt-get install -y \
+    gcc g++ pkg-config \
+    default-libmysqlclient-dev \
+    default-mysql-client \
+    libssl-dev libffi-dev \
+    libjpeg-dev libpng-dev libwebp-dev zlib1g-dev \
+    git curl wget vim \
+    && rm -rf /var/lib/apt/lists/*
+
+# 创建非root用户
+RUN useradd -m -u 1000 mrdoc && chown -R mrdoc:mrdoc /app
+
+USER mrdoc
+
+# 复制项目文件
+COPY --chown=mrdoc:mrdoc . /app/
+
+# 创建目录
+RUN mkdir -p /app/logs /app/media /app/static /app/config
+
+# 安装Python依赖
+RUN pip install --no-cache-dir --user -r requirements.txt && \
+    pip install --no-cache-dir --user \
+    cryptography==41.0.7 \
+    django-filter==23.5 \
+    gunicorn==21.2.0 \
+    mysqlclient==2.2.0
+
+# 复制启动脚本
+COPY --chown=mrdoc:mrdoc deployment/docker/entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+EXPOSE 8000
+
+ENTRYPOINT ["/app/entrypoint.sh"]
+EOF
+
+    # 创建Nginx配置
+    mkdir -p deployment/nginx
+
+    cat > deployment/nginx/nginx.conf << 'EOF'
+user nginx;
+worker_processes auto;
+error_log /var/log/nginx/error.log warn;
+pid /var/run/nginx.pid;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
+    keepalive_timeout 65;
+    types_hash_max_size 2048;
+
+    upstream mrdoc_backend {
+        server mrdocs-safe-app:8000;
+    }
+
+    include /etc/nginx/conf.d/*.conf;
+}
+EOF
+
+    cat > deployment/nginx/mrdoc.conf << 'EOF'
+server {
+    listen 80;
+    server_name _;
+
+    client_max_body_size 100M;
+
+    location /static/ {
+        alias /var/www/static/;
+        expires 30d;
+    }
+
+    location /media/ {
+        alias /var/www/media/;
+        expires 7d;
+    }
+
+    location / {
+        proxy_pass http://mrdoc_backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 300s;
+        proxy_read_timeout 300s;
+    }
+}
+EOF
+
     # 创建安全的docker配置
     create_safe_docker_compose
 
@@ -633,15 +870,17 @@ main() {
 
     # 检查MySQL是否就绪
     print_message "检查MySQL服务状态..."
-    for i in {1..30}; do
-        if docker-compose -f deployment/docker/docker-compose.yml exec -T ${CONTAINER_PREFIX}-mysql mysqladmin ping -h localhost --silent 2>/dev/null; then
-            print_success "MySQL服务已就绪"
-            break
-        fi
-        echo -n "."
-        sleep 2
-    done
-    echo
+    if [ "$USE_EXTERNAL_MYSQL" = "false" ]; then
+        for i in {1..30}; do
+            if docker-compose -f deployment/docker/docker-compose.yml exec -T ${CONTAINER_PREFIX}-mysql mysqladmin ping -h localhost --silent 2>/dev/null; then
+                print_success "MySQL服务已就绪"
+                break
+            fi
+            echo -n "."
+            sleep 2
+        done
+        echo
+    fi
 
     # 数据库迁移
     print_message "执行数据库迁移..."
