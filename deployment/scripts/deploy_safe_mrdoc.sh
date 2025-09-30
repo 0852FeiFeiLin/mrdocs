@@ -409,8 +409,8 @@ services:
   # MrDoc 主应用
   ${CONTAINER_PREFIX}-app:
     build:
-      context: .
-      dockerfile: docker/Dockerfile
+      context: ..
+      dockerfile: Dockerfile
     container_name: ${CONTAINER_PREFIX}-app
     restart: unless-stopped
     ports:
