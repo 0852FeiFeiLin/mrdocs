@@ -501,7 +501,7 @@ EOF
       - "${MYSQL_PORT}:3306"
     networks:
       - ${CONTAINER_PREFIX}-network
-    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --default-authentication-plugin=mysql_native_password
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --default-authentication-plugin=mysql_native_password --skip-ssl
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 30s

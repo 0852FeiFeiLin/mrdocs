@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y \
     g++ \
     pkg-config \
     default-libmysqlclient-dev \
+    default-mysql-client \
     libssl-dev \
     libffi-dev \
     libjpeg-dev \

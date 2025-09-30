@@ -26,19 +26,21 @@ echo_info "🚀 启动 MrDoc 应用..."
 
 # 等待数据库服务可用
 echo_info "⏳ 等待数据库服务启动..."
-while ! mysqladmin ping -h"$DB_HOST" -u"$DB_USER" -p"$DB_PASSWORD" --silent; do
-    echo_warn "数据库未就绪，等待 5 秒..."
+for i in $(seq 1 30); do
+    if mysqladmin ping -h"$DB_HOST" -u"$DB_USER" -p"$DB_PASSWORD" --ssl-mode=DISABLED --silent 2>/dev/null; then
+        echo_info "✅ 数据库连接成功!"
+        break
+    fi
+    echo_warn "等待数据库 ($i/30)..."
     sleep 5
 done
-
-echo_info "✅ 数据库连接成功!"
 
 # 切换到项目目录
 cd /app
 
 # 创建数据库（如果不存在）
 echo_info "📊 创建数据库..."
-mysql -h"$DB_HOST" -u"$DB_USER" -p"$DB_PASSWORD" -e "CREATE DATABASE IF NOT EXISTS \`$DB_NAME\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" || echo_warn "数据库可能已存在"
+mysql -h"$DB_HOST" -u"$DB_USER" -p"$DB_PASSWORD" --ssl-mode=DISABLED -e "CREATE DATABASE IF NOT EXISTS \`$DB_NAME\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" || echo_warn "数据库可能已存在"
 
 # 数据库迁移
 echo_info "🔄 执行数据库迁移..."
