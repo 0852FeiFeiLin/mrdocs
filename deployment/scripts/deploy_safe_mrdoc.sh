@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# MrDoc 安全部署脚本 - 适配现有服务环境
-# 避免与现有MySQL、Redis、Nginx服务冲突
+# MrDoc 部署脚本 - SQLite版本
+# 使用SQLite数据库，无需MySQL，部署更简单
 
 set -e
 
@@ -44,8 +44,7 @@ MRDOC_REPO_URL="https://github.com/0852FeiFeiLin/mrdocs.git"
 MRDOC_BRANCH="master"
 DOMAIN_NAME="localhost"
 
-# 安全端口配置（避免冲突）
-MYSQL_PORT="3307"      # 使用3307而不是3306
+# 端口配置（SQLite版本不需要MySQL端口）
 REDIS_PORT="6380"      # 使用6380而不是6379
 MRDOC_PORT="8081"      # 使用8081端口
 NGINX_HTTP_PORT="8082" # 使用8082端口
@@ -54,13 +53,8 @@ NGINX_HTTPS_PORT="8443" # 使用8443而不是443
 # 容器名前缀（避免冲突）
 CONTAINER_PREFIX="mrdocs-safe"
 
-# 服务模式
-USE_EXTERNAL_MYSQL="false"
+# 服务模式（SQLite版本只需要考虑Redis）
 USE_EXTERNAL_REDIS="false"
-EXTERNAL_MYSQL_HOST=""
-EXTERNAL_MYSQL_PORT=""
-EXTERNAL_MYSQL_USER=""
-EXTERNAL_MYSQL_PASSWORD=""
 EXTERNAL_REDIS_HOST=""
 EXTERNAL_REDIS_PORT=""
 EXTERNAL_REDIS_PASSWORD=""
@@ -146,12 +140,13 @@ check_network_conflict() {
 
 # 显示欢迎信息
 show_welcome() {
-    print_title "MrDoc 安全部署脚本"
-    echo -e "${BLUE}🛡️ 避免与现有服务冲突的安全部署方案${NC}"
+    print_title "MrDoc SQLite部署脚本"
+    echo -e "${BLUE}📦 使用SQLite数据库，简化部署流程${NC}"
     echo
-    echo -e "${GREEN}安全特性：${NC}"
+    echo -e "${GREEN}特性：${NC}"
+    echo -e "  ✅ 使用SQLite数据库（无需MySQL）"
     echo -e "  ✅ 自动检测端口冲突"
-    echo -e "  ✅ 支持外部MySQL/Redis服务"
+    echo -e "  ✅ 支持外部Redis服务"
     echo -e "  ✅ 使用非标准端口避免冲突"
     echo -e "  ✅ 容器名称加前缀避免重复"
     echo -e "  ✅ 独立网络隔离"
@@ -168,9 +163,7 @@ detect_conflicts() {
     # 检查端口冲突
     print_message "检查端口占用情况..."
 
-    if ! check_port_conflict $MYSQL_PORT "MySQL"; then
-        conflicts_found=1
-    fi
+    # SQLite版本不需要检查MySQL端口
 
     if ! check_port_conflict $REDIS_PORT "Redis"; then
         conflicts_found=1
@@ -187,9 +180,7 @@ detect_conflicts() {
     # 检查容器名冲突
     print_message "检查容器名冲突..."
 
-    if ! check_container_conflict "${CONTAINER_PREFIX}-mysql"; then
-        conflicts_found=1
-    fi
+    # SQLite版本不需要MySQL容器
 
     if ! check_container_conflict "${CONTAINER_PREFIX}-redis"; then
         conflicts_found=1
@@ -221,35 +212,8 @@ detect_conflicts() {
 configure_external_services() {
     print_title "外部服务配置"
 
-    echo -e "${YELLOW}由于检测到现有服务，建议复用外部MySQL和Redis${NC}"
+    echo -e "${YELLOW}使用SQLite数据库，只需配置Redis${NC}"
     echo
-
-    # MySQL配置
-    read -p "是否使用外部MySQL服务? (y/N): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        USE_EXTERNAL_MYSQL="true"
-        read -p "MySQL主机地址 [localhost]: " EXTERNAL_MYSQL_HOST
-        EXTERNAL_MYSQL_HOST=${EXTERNAL_MYSQL_HOST:-localhost}
-
-        read -p "MySQL端口 [3306]: " EXTERNAL_MYSQL_PORT
-        EXTERNAL_MYSQL_PORT=${EXTERNAL_MYSQL_PORT:-3306}
-
-        read -p "MySQL用户名: " EXTERNAL_MYSQL_USER
-        read -p "MySQL密码: " EXTERNAL_MYSQL_PASSWORD
-
-        # 测试连接
-        print_message "测试MySQL连接..."
-        if command -v mysql >/dev/null 2>&1; then
-            if mysql -h"$EXTERNAL_MYSQL_HOST" -P"$EXTERNAL_MYSQL_PORT" -u"$EXTERNAL_MYSQL_USER" -p"$EXTERNAL_MYSQL_PASSWORD" -e "SELECT 1" 2>/dev/null; then
-                print_success "MySQL连接测试成功"
-            else
-                print_warning "MySQL连接测试失败，请检查配置"
-            fi
-        else
-            print_warning "未安装mysql客户端，无法测试连接"
-        fi
-    fi
 
     # Redis配置
     read -p "是否使用外部Redis服务? (y/N): " -n 1 -r
@@ -348,11 +312,6 @@ get_user_config() {
         read -p "MrDoc应用端口 [${MRDOC_PORT}]: " input_port
         MRDOC_PORT=${input_port:-$MRDOC_PORT}
 
-        if [ "$USE_EXTERNAL_MYSQL" = "false" ]; then
-            read -p "MySQL端口 [${MYSQL_PORT}]: " input_mysql_port
-            MYSQL_PORT=${input_mysql_port:-$MYSQL_PORT}
-        fi
-
         if [ "$USE_EXTERNAL_REDIS" = "false" ]; then
             read -p "Redis端口 [${REDIS_PORT}]: " input_redis_port
             REDIS_PORT=${input_redis_port:-$REDIS_PORT}
@@ -373,14 +332,10 @@ get_user_config() {
     echo -e "${GREEN}✅ 项目名称: ${YELLOW}$PROJECT_NAME${NC}"
     echo -e "${GREEN}✅ 项目目录: ${YELLOW}$PROJECT_DIR${NC}"
     echo -e "${GREEN}✅ 访问域名: ${YELLOW}$DOMAIN_NAME${NC}"
+    echo -e "${GREEN}✅ 数据库: ${YELLOW}SQLite (内置)${NC}"
     echo
     echo -e "${BLUE}端口配置：${NC}"
     echo -e "  📱 MrDoc应用: ${YELLOW}$MRDOC_PORT${NC}"
-    if [ "$USE_EXTERNAL_MYSQL" = "false" ]; then
-        echo -e "  🗄️  MySQL: ${YELLOW}$MYSQL_PORT${NC}"
-    else
-        echo -e "  🗄️  MySQL: ${YELLOW}外部服务 $EXTERNAL_MYSQL_HOST:$EXTERNAL_MYSQL_PORT${NC}"
-    fi
     if [ "$USE_EXTERNAL_REDIS" = "false" ]; then
         echo -e "  ⚡ Redis: ${YELLOW}$REDIS_PORT${NC}"
     else
@@ -417,26 +372,12 @@ services:
       - ../../media:/app/media
       - ../../logs:/app/logs
       - ../../static:/app/static
-      - ../config:/app/config
+      - ../../config:/app/config
+      - sqlite_data:/app/db
     environment:
+      - DB_ENGINE=sqlite
+      - DB_NAME=/app/config/db.sqlite3
 EOF
-
-    # 数据库环境变量
-    if [ "$USE_EXTERNAL_MYSQL" = "true" ]; then
-        cat >> deployment/docker/docker-compose.yml << EOF
-      - DB_HOST=${EXTERNAL_MYSQL_HOST}
-      - DB_PORT=${EXTERNAL_MYSQL_PORT}
-      - DB_USER=${EXTERNAL_MYSQL_USER}
-      - DB_PASSWORD=${EXTERNAL_MYSQL_PASSWORD}
-EOF
-    else
-        cat >> deployment/docker/docker-compose.yml << EOF
-      - DB_HOST=${CONTAINER_PREFIX}-mysql
-      - DB_PORT=3306
-      - DB_USER=mrdoc
-      - DB_PASSWORD=mrdocpassword123
-EOF
-    fi
 
     # Redis环境变量
     if [ "$USE_EXTERNAL_REDIS" = "true" ]; then
@@ -457,7 +398,6 @@ EOF
 
     # 应用其他环境变量
     cat >> deployment/docker/docker-compose.yml << EOF
-      - DB_NAME=mrdoc
       - DJANGO_SETTINGS_MODULE=MrDoc.settings
       - DJANGO_SECRET_KEY=django_safe_secret_$(openssl rand -base64 32 | tr -d '=+/')
       - DJANGO_DEBUG=False
@@ -478,44 +418,9 @@ EOF
     depends_on:
 EOF
 
-    # 依赖服务
-    if [ "$USE_EXTERNAL_MYSQL" = "false" ]; then
-        echo "      - ${CONTAINER_PREFIX}-mysql" >> deployment/docker/docker-compose.yml
-    fi
+    # 依赖服务（SQLite版本只依赖Redis）
     if [ "$USE_EXTERNAL_REDIS" = "false" ]; then
         echo "      - ${CONTAINER_PREFIX}-redis" >> deployment/docker/docker-compose.yml
-    fi
-
-    # MySQL服务（如果不使用外部）
-    if [ "$USE_EXTERNAL_MYSQL" = "false" ]; then
-        cat >> deployment/docker/docker-compose.yml << EOF
-
-  # MySQL 数据库
-  ${CONTAINER_PREFIX}-mysql:
-    image: mysql:5.7
-    container_name: ${CONTAINER_PREFIX}-mysql
-    restart: unless-stopped
-    environment:
-      MYSQL_ROOT_PASSWORD: rootpassword123
-      MYSQL_DATABASE: mrdoc
-      MYSQL_USER: mrdoc
-      MYSQL_PASSWORD: mrdocpassword123
-      MYSQL_CHARACTER_SET_SERVER: utf8mb4
-      MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
-    volumes:
-      - ${CONTAINER_PREFIX}_mysql_data:/var/lib/mysql
-      - ../docker/mysql-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-    ports:
-      - "${MYSQL_PORT}:3306"
-    networks:
-      - ${CONTAINER_PREFIX}-network
-    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-EOF
     fi
 
     # Redis服务（如果不使用外部）
@@ -565,12 +470,10 @@ EOF
 
 # 数据卷定义
 volumes:
+  sqlite_data:
 EOF
 
-    # 数据卷
-    if [ "$USE_EXTERNAL_MYSQL" = "false" ]; then
-        echo "  ${CONTAINER_PREFIX}_mysql_data:" >> deployment/docker/docker-compose.yml
-    fi
+    # Redis数据卷
     if [ "$USE_EXTERNAL_REDIS" = "false" ]; then
         echo "  ${CONTAINER_PREFIX}_redis_data:" >> deployment/docker/docker-compose.yml
     fi
@@ -630,19 +533,7 @@ main() {
     # 创建必要的配置文件
     print_message "创建配置文件..."
 
-    # 创建MySQL初始化脚本
-    cat > deployment/docker/mysql-init.sql << 'EOF'
--- MySQL初始化脚本
--- 确保mrdoc用户有正确的权限
-
--- 创建数据库
-CREATE DATABASE IF NOT EXISTS mrdoc CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
--- 确保用户权限（MySQL 5.7会自动创建MYSQL_USER，这里补充权限）
-GRANT ALL PRIVILEGES ON *.* TO 'mrdoc'@'%' WITH GRANT OPTION;
-GRANT ALL PRIVILEGES ON mrdoc.* TO 'mrdoc'@'%';
-FLUSH PRIVILEGES;
-EOF
+    # SQLite版本不需要MySQL初始化脚本
 
     # 创建entrypoint.sh
     cat > deployment/docker/entrypoint.sh << 'EOF'
@@ -668,82 +559,26 @@ echo_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-echo_info "🚀 启动 MrDoc 应用..."
+echo_info "🚀 启动 MrDoc 应用 (SQLite版本)..."
 
-# 显示环境变量调试信息
+# 显示环境配置
 echo_info "环境配置:"
-echo "  DB_HOST=$DB_HOST"
-echo "  DB_PORT=$DB_PORT"
-echo "  DB_NAME=$DB_NAME"
-echo "  DB_USER=$DB_USER"
+echo "  数据库: SQLite"
 echo "  REDIS_HOST=$REDIS_HOST"
-
-# 使用Python检查数据库连接
-echo_info "⏳ 等待数据库服务启动..."
-python << 'PYTHON_EOF'
-import time
-import os
-import sys
-
-try:
-    import MySQLdb
-except ImportError:
-    print("[ERROR] MySQLdb模块未安装")
-    sys.exit(1)
-
-max_retries = 30
-retry_count = 0
-db_host = os.environ.get('DB_HOST', 'localhost')
-db_user = os.environ.get('DB_USER', 'mrdoc')
-db_password = os.environ.get('DB_PASSWORD', 'mrdocpassword123')
-db_port = int(os.environ.get('DB_PORT', '3306'))
-
-while retry_count < max_retries:
-    try:
-        conn = MySQLdb.connect(
-            host=db_host,
-            user=db_user,
-            passwd=db_password,
-            port=db_port,
-            connect_timeout=5
-        )
-        conn.close()
-        print("[INFO] ✅ 数据库连接成功!")
-        break
-    except Exception as e:
-        retry_count += 1
-        print(f"[WARN] 等待数据库 ({retry_count}/{max_retries})...")
-        time.sleep(5)
-
-if retry_count == max_retries:
-    print(f"[ERROR] 无法连接到数据库 {db_host}:{db_port}")
-    sys.exit(1)
-PYTHON_EOF
+echo "  REDIS_PORT=$REDIS_PORT"
 
 cd /app
 
-# 创建数据库
-echo_info "📊 确保数据库存在..."
-python << 'PYTHON_EOF'
-import os
-import MySQLdb
-
-try:
-    conn = MySQLdb.connect(
-        host=os.environ.get('DB_HOST', 'localhost'),
-        user=os.environ.get('DB_USER', 'mrdoc'),
-        passwd=os.environ.get('DB_PASSWORD', 'mrdocpassword123'),
-        port=int(os.environ.get('DB_PORT', '3306'))
-    )
-    cursor = conn.cursor()
-    db_name = os.environ.get('DB_NAME', 'mrdoc')
-    cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
-    conn.commit()
-    conn.close()
-    print(f"[INFO] 数据库 {db_name} 已准备就绪")
-except Exception as e:
-    print(f"[WARN] {e}")
-PYTHON_EOF
+# 确保config目录和SQLite数据库文件存在
+echo_info "📦 初始化SQLite数据库..."
+mkdir -p /app/config
+if [ ! -f "/app/config/db.sqlite3" ]; then
+    touch /app/config/db.sqlite3
+    chmod 664 /app/config/db.sqlite3
+    echo_info "✅ SQLite数据库文件已创建"
+else
+    echo_info "ℹ️ SQLite数据库文件已存在"
+fi
 
 # Django操作
 echo_info "🔄 执行数据库迁移..."
@@ -769,7 +604,7 @@ PYTHON_EOF
 
 # 创建目录
 mkdir -p /app/media/uploads /app/logs
-chmod -R 755 /app/media /app/static
+chmod -R 755 /app/media /app/static /app/config
 
 echo_info "🎉 MrDoc 初始化完成!"
 
@@ -788,11 +623,9 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV DJANGO_SETTINGS_MODULE=MrDoc.settings
 
-# 安装系统依赖
+# 安装系统依赖（SQLite版本不需要MySQL客户端）
 RUN apt-get update && apt-get install -y \
     gcc g++ pkg-config \
-    default-libmysqlclient-dev \
-    default-mysql-client \
     libssl-dev libffi-dev \
     libjpeg-dev libpng-dev libwebp-dev zlib1g-dev \
     git curl wget vim netcat-openbsd \
@@ -807,15 +640,14 @@ USER mrdoc
 COPY --chown=mrdoc:mrdoc . /app/
 
 # 创建目录
-RUN mkdir -p /app/logs /app/media /app/static /app/config
+RUN mkdir -p /app/logs /app/media /app/static /app/config /app/db
 
-# 安装Python依赖
+# 安装Python依赖（SQLite版本不需要mysqlclient）
 RUN pip install --no-cache-dir --user -r requirements.txt && \
     pip install --no-cache-dir --user \
     cryptography==41.0.7 \
     django-filter==23.5 \
-    gunicorn==21.2.0 \
-    mysqlclient==2.2.0
+    gunicorn==21.2.0
 
 # 复制启动脚本
 COPY --chown=mrdoc:mrdoc deployment/docker/entrypoint.sh /app/entrypoint.sh
@@ -897,21 +729,7 @@ EOF
     # 等待服务启动
     print_message "等待服务启动..."
 
-    # 检查MySQL是否就绪
-    if [ "$USE_EXTERNAL_MYSQL" = "false" ]; then
-        print_message "检查MySQL服务状态..."
-        for i in {1..30}; do
-            if docker exec ${CONTAINER_PREFIX}-mysql mysqladmin ping -h localhost --silent 2>/dev/null; then
-                print_success "MySQL服务已就绪"
-                break
-            fi
-            echo -n "."
-            sleep 2
-        done
-        echo
-    fi
-
-    # 等待应用容器完全启动（entrypoint.sh会自动执行迁移和创建用户）
+    # SQLite版本不需要等待数据库服务，直接等待应用启动
     print_message "等待应用初始化完成..."
     for i in {1..60}; do
         # 检查容器是否正在运行且健康
@@ -936,7 +754,7 @@ EOF
 
     # 显示部署结果
     print_title "部署完成"
-    print_success "MrDoc 安全部署成功！"
+    print_success "MrDoc SQLite版本部署成功！"
     echo
     SERVER_IP=$(hostname -I | awk '{print $1}')
     echo -e "${GREEN}✅ 访问地址: ${YELLOW}http://$SERVER_IP:$MRDOC_PORT${NC}"
@@ -945,15 +763,13 @@ EOF
     echo
     echo -e "${BLUE}📊 服务端口：${NC}"
     echo -e "  MrDoc应用: $MRDOC_PORT"
-    if [ "$USE_EXTERNAL_MYSQL" = "false" ]; then
-        echo -e "  MySQL: $MYSQL_PORT"
-    fi
+    echo -e "  数据库: SQLite (内置)"
     if [ "$USE_EXTERNAL_REDIS" = "false" ]; then
         echo -e "  Redis: $REDIS_PORT"
     fi
     echo -e "  Nginx: $NGINX_HTTP_PORT"
     echo
-    print_message "所有服务使用独立端口，不会与现有服务冲突"
+    print_message "使用SQLite数据库，部署更简单！"
 }
 
 # 错误处理
