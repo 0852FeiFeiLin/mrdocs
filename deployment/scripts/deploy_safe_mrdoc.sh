@@ -36,7 +36,7 @@ print_success() {
 }
 
 # 默认配置
-PROJECT_NAME="mrdocs-safe"
+PROJECT_NAME="mrdocs"
 # 获取脚本所在目录的上上级目录 (../../)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
@@ -52,7 +52,7 @@ NGINX_HTTP_PORT="8082" # 使用8082端口
 NGINX_HTTPS_PORT="8443" # 使用8443而不是443
 
 # 容器名前缀（避免冲突）
-CONTAINER_PREFIX="mrdoc-safe"
+CONTAINER_PREFIX="mrdocs-safe"
 
 # 服务模式
 USE_EXTERNAL_MYSQL="false"
