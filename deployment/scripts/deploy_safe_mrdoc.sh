@@ -593,8 +593,13 @@ EOF
 main() {
     # 检查是否为root用户
     if [ "$EUID" -eq 0 ]; then
-        print_error "请不要使用root用户运行此脚本"
-        exit 1
+        print_warning "正在使用root用户运行脚本，请确保您了解相关安全风险"
+        read -p "继续运行? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            print_error "部署已取消"
+            exit 1
+        fi
     fi
 
     show_welcome
