@@ -402,37 +402,35 @@ create_safe_docker_compose() {
     print_title "生成安全Docker配置"
 
     # 创建docker-compose.yml
-    cat > docker/docker-compose.yml << EOF
-version: '3.8'
-
+    cat > deployment/docker/docker-compose.yml << EOF
 services:
   # MrDoc 主应用
   ${CONTAINER_PREFIX}-app:
     build:
-      context: .
-      dockerfile: docker/Dockerfile.mrdoc
+      context: ../..
+      dockerfile: deployment/docker/Dockerfile.mrdoc
     container_name: ${CONTAINER_PREFIX}-app
     restart: unless-stopped
     ports:
       - "${MRDOC_PORT}:8000"
     volumes:
-      - ./media:/app/media
-      - ./logs:/app/logs
-      - ./static:/app/static
-      - ./config:/app/config
+      - ../../media:/app/media
+      - ../../logs:/app/logs
+      - ../../static:/app/static
+      - ../config:/app/config
     environment:
 EOF
 
     # 数据库环境变量
     if [ "$USE_EXTERNAL_MYSQL" = "true" ]; then
-        cat >> docker/docker-compose.yml << EOF
+        cat >> deployment/docker/docker-compose.yml << EOF
       - DB_HOST=${EXTERNAL_MYSQL_HOST}
       - DB_PORT=${EXTERNAL_MYSQL_PORT}
       - DB_USER=${EXTERNAL_MYSQL_USER}
       - DB_PASSWORD=${EXTERNAL_MYSQL_PASSWORD}
 EOF
     else
-        cat >> docker/docker-compose.yml << EOF
+        cat >> deployment/docker/docker-compose.yml << EOF
       - DB_HOST=${CONTAINER_PREFIX}-mysql
       - DB_PORT=3306
       - DB_USER=mrdoc
@@ -442,15 +440,15 @@ EOF
 
     # Redis环境变量
     if [ "$USE_EXTERNAL_REDIS" = "true" ]; then
-        cat >> docker/docker-compose.yml << EOF
+        cat >> deployment/docker/docker-compose.yml << EOF
       - REDIS_HOST=${EXTERNAL_REDIS_HOST}
       - REDIS_PORT=${EXTERNAL_REDIS_PORT}
 EOF
         if [ -n "$EXTERNAL_REDIS_PASSWORD" ]; then
-            echo "      - REDIS_PASSWORD=${EXTERNAL_REDIS_PASSWORD}" >> docker/docker-compose.yml
+            echo "      - REDIS_PASSWORD=${EXTERNAL_REDIS_PASSWORD}" >> deployment/docker/docker-compose.yml
         fi
     else
-        cat >> docker/docker-compose.yml << EOF
+        cat >> deployment/docker/docker-compose.yml << EOF
       - REDIS_HOST=${CONTAINER_PREFIX}-redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=redis_safe_password_$(date +%s)
@@ -458,7 +456,7 @@ EOF
     fi
 
     # 应用其他环境变量
-    cat >> docker/docker-compose.yml << EOF
+    cat >> deployment/docker/docker-compose.yml << EOF
       - DB_NAME=mrdoc
       - DJANGO_SETTINGS_MODULE=MrDoc.settings
       - DJANGO_SECRET_KEY=django_safe_secret_$(openssl rand -base64 32 | tr -d '=+/')
@@ -475,15 +473,15 @@ EOF
 
     # 依赖服务
     if [ "$USE_EXTERNAL_MYSQL" = "false" ]; then
-        echo "      - ${CONTAINER_PREFIX}-mysql" >> docker/docker-compose.yml
+        echo "      - ${CONTAINER_PREFIX}-mysql" >> deployment/docker/docker-compose.yml
     fi
     if [ "$USE_EXTERNAL_REDIS" = "false" ]; then
-        echo "      - ${CONTAINER_PREFIX}-redis" >> docker/docker-compose.yml
+        echo "      - ${CONTAINER_PREFIX}-redis" >> deployment/docker/docker-compose.yml
     fi
 
     # MySQL服务（如果不使用外部）
     if [ "$USE_EXTERNAL_MYSQL" = "false" ]; then
-        cat >> docker/docker-compose.yml << EOF
+        cat >> deployment/docker/docker-compose.yml << EOF
 
   # MySQL 数据库
   ${CONTAINER_PREFIX}-mysql:
@@ -499,7 +497,7 @@ EOF
       MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
     volumes:
       - ${CONTAINER_PREFIX}_mysql_data:/var/lib/mysql
-      - ./config/my.cnf:/etc/mysql/conf.d/my.cnf
+      - ../config/my.cnf:/etc/mysql/conf.d/my.cnf
     ports:
       - "${MYSQL_PORT}:3306"
     networks:
@@ -518,7 +516,7 @@ EOF
 
     # Redis服务（如果不使用外部）
     if [ "$USE_EXTERNAL_REDIS" = "false" ]; then
-        cat >> docker/docker-compose.yml << EOF
+        cat >> deployment/docker/docker-compose.yml << EOF
 
   # Redis 缓存
   ${CONTAINER_PREFIX}-redis:
@@ -527,7 +525,7 @@ EOF
     restart: unless-stopped
     volumes:
       - ${CONTAINER_PREFIX}_redis_data:/data
-      - ./config/redis.conf:/usr/local/etc/redis/redis.conf
+      - ../config/redis.conf:/usr/local/etc/redis/redis.conf
     ports:
       - "${REDIS_PORT}:6379"
     networks:
@@ -542,7 +540,7 @@ EOF
     fi
 
     # Nginx服务
-    cat >> docker/docker-compose.yml << EOF
+    cat >> deployment/docker/docker-compose.yml << EOF
 
   # Nginx 反向代理
   ${CONTAINER_PREFIX}-nginx:
@@ -553,10 +551,10 @@ EOF
       - "${NGINX_HTTP_PORT}:80"
       - "${NGINX_HTTPS_PORT}:443"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
-      - ./nginx/mrdoc.conf:/etc/nginx/conf.d/default.conf
-      - ./static:/var/www/static
-      - ./media:/var/www/media
+      - ../nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ../nginx/mrdoc.conf:/etc/nginx/conf.d/default.conf
+      - ../../static:/var/www/static
+      - ../../media:/var/www/media
     networks:
       - ${CONTAINER_PREFIX}-network
     depends_on:
@@ -568,14 +566,14 @@ EOF
 
     # 数据卷
     if [ "$USE_EXTERNAL_MYSQL" = "false" ]; then
-        echo "  ${CONTAINER_PREFIX}_mysql_data:" >> docker/docker-compose.yml
+        echo "  ${CONTAINER_PREFIX}_mysql_data:" >> deployment/docker/docker-compose.yml
     fi
     if [ "$USE_EXTERNAL_REDIS" = "false" ]; then
-        echo "  ${CONTAINER_PREFIX}_redis_data:" >> docker/docker-compose.yml
+        echo "  ${CONTAINER_PREFIX}_redis_data:" >> deployment/docker/docker-compose.yml
     fi
 
     # 网络定义
-    cat >> docker/docker-compose.yml << EOF
+    cat >> deployment/docker/docker-compose.yml << EOF
 
 # 网络定义
 networks:
@@ -623,48 +621,16 @@ main() {
         git_clone_with_mirrors "$MRDOC_REPO_URL" . "$MRDOC_BRANCH"
     fi
 
-    # 复制部署文件
-    if [ ! -d "docker" ]; then
-        print_message "复制部署配置..."
-
-        # 从项目根目录使用相对路径到deployment目录
-        if [ -d "deployment/docker" ]; then
-            cp -r deployment/docker ./
-            print_message "已复制docker配置"
-            # 复制.dockerignore到项目根目录
-            if [ -f "docker/.dockerignore" ]; then
-                cp docker/.dockerignore ./.dockerignore
-                print_message "已复制.dockerignore文件"
-            fi
-        else
-            print_warning "docker配置目录不存在，将创建基础配置"
-            mkdir -p docker
-        fi
-
-        if [ -d "deployment/nginx" ]; then
-            cp -r deployment/nginx ./
-            print_message "已复制nginx配置"
-        else
-            print_warning "nginx配置目录不存在，将创建基础配置"
-            mkdir -p nginx
-        fi
-
-        if [ -d "deployment/config" ]; then
-            cp -r deployment/config ./
-            print_message "已复制config配置"
-        else
-            print_warning "config配置目录不存在，将创建基础配置"
-            mkdir -p config
-        fi
-    fi
+    # 确保部署目录存在
+    mkdir -p deployment/docker
 
     # 创建安全的docker配置
     create_safe_docker_compose
 
     # 构建和启动
     print_title "构建和启动服务"
-    docker-compose -f docker/docker-compose.yml build
-    docker-compose -f docker/docker-compose.yml up -d
+    docker-compose -f deployment/docker/docker-compose.yml build
+    docker-compose -f deployment/docker/docker-compose.yml up -d
 
     # 等待服务启动
     print_message "等待服务启动..."
@@ -672,11 +638,11 @@ main() {
 
     # 数据库迁移
     print_message "执行数据库迁移..."
-    docker-compose -f docker/docker-compose.yml exec -T ${CONTAINER_PREFIX}-app python manage.py migrate
+    docker-compose -f deployment/docker/docker-compose.yml exec -T ${CONTAINER_PREFIX}-app python manage.py migrate
 
     # 创建超级用户
     print_message "创建管理员账户..."
-    docker-compose -f docker/docker-compose.yml exec -T ${CONTAINER_PREFIX}-app python manage.py shell << 'PYEOF'
+    docker-compose -f deployment/docker/docker-compose.yml exec -T ${CONTAINER_PREFIX}-app python manage.py shell << 'PYEOF'
 from django.contrib.auth.models import User
 if not User.objects.filter(username='admin').exists():
     User.objects.create_superuser('admin', 'admin@example.com', 'admin123456')
