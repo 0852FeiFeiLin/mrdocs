@@ -22,24 +22,24 @@
 │  │    现有服务栈        │    │      MrDoc 独立服务栈        │ │
 │  │                    │    │                             │ │
 │  │  ┌──────────────┐  │    │  ┌─────────────────────────┐ │ │
-│  │  │ 本机MySQL    │  │    │  │ mrdoc-safe-app         │ │ │
+│  │  │ 本机MySQL    │  │    │  │ mrdocs-safe-app        │ │ │
 │  │  │ 端口: 3306   │  │    │  │ 端口: 8081             │ │ │
 │  │  │ 生产数据     │  │    │  └─────────────────────────┘ │ │
 │  │  └──────────────┘  │    │                             │ │
 │  │                    │    │  ┌─────────────────────────┐ │ │
-│  │  ┌──────────────┐  │    │  │ mrdoc-safe-mysql       │ │ │
+│  │  ┌──────────────┐  │    │  │ mrdocs-safe-mysql      │ │ │
 │  │  │ 本机Redis    │  │    │  │ 端口: 3307             │ │ │
 │  │  │ 端口: 6379   │  │    │  │ 独立数据               │ │ │
 │  │  │ 生产数据     │  │    │  └─────────────────────────┘ │ │
 │  │  └──────────────┘  │    │                             │ │
 │  │                    │    │  ┌─────────────────────────┐ │ │
-│  │  ┌──────────────┐  │    │  │ mrdoc-safe-redis       │ │ │
+│  │  ┌──────────────┐  │    │  │ mrdocs-safe-redis      │ │ │
 │  │  │ 其他服务     │  │    │  │ 端口: 6380             │ │ │
 │  │  │ ...          │  │    │  │ 数据库: 4号库           │ │ │
 │  │  └──────────────┘  │    │  └─────────────────────────┘ │ │
 │  │                    │    │                             │ │
 │  └─────────────────────┘    │  ┌─────────────────────────┐ │ │
-│                             │  │ mrdoc-safe-nginx       │ │ │
+│                             │  │ mrdocs-safe-nginx      │ │ │
 │                             │  │ 端口: 8082             │ │ │
 │                             │  │ 反向代理               │ │ │
 │                             │  └─────────────────────────┘ │ │
@@ -63,10 +63,10 @@
 ```yaml
 # 独立容器命名，避免重名冲突
 containers:
-    - mrdoc-safe-app # MrDoc 主应用
-    - mrdoc-safe-mysql # 独立 MySQL 容器
-    - mrdoc-safe-redis # 独立 Redis 容器
-    - mrdoc-safe-nginx # 独立 Nginx 代理
+    - mrdocs-safe-app # MrDoc 主应用
+    - mrdocs-safe-mysql # 独立 MySQL 容器
+    - mrdocs-safe-redis # 独立 Redis 容器
+    - mrdocs-safe-nginx # 独立 Nginx 代理
 ```
 
 ### 3. **网络隔离**
@@ -74,7 +74,7 @@ containers:
 ```yaml
 # 独立Docker网络
 networks:
-    mrdoc-safe-network:
+    mrdocs-safe-network:
         driver: bridge
         ipam:
             config:
@@ -100,7 +100,7 @@ volumes:
 ```ini
 # MrDoc 使用 Redis 第4号数据库
 [redis]
-host = mrdoc-safe-redis
+host = mrdocs-safe-redis
 port = 6379  # 容器内端口
 db = 4       # 专用数据库编号
 password = auto_generated_password
@@ -171,8 +171,8 @@ chmod +x ~/deploy_safe_mrdoc.sh
 ================================
 ✅ 仓库地址: https://github.com/0852FeiFeiLin/mrdocs.git
 ✅ 分支: master
-✅ 项目名称: mrdocs-safe
-✅ 项目目录: /home/ff/mrdocs-safe
+✅ 项目名称: mrdocs
+✅ 项目目录: /root/kt/mrdocs
 ✅ 访问域名: localhost
 
 端口配置：
@@ -191,10 +191,10 @@ chmod +x ~/deploy_safe_mrdoc.sh
 docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 
 # 应该看到4个运行中的容器：
-# mrdoc-safe-app     Up    0.0.0.0:8081->8000/tcp
-# mrdoc-safe-mysql   Up    0.0.0.0:3307->3306/tcp
-# mrdoc-safe-redis   Up    0.0.0.0:6380->6379/tcp
-# mrdoc-safe-nginx   Up    0.0.0.0:8082->80/tcp
+# mrdocs-safe-app     Up    0.0.0.0:8081->8000/tcp
+# mrdocs-safe-mysql   Up    0.0.0.0:3307->3306/tcp
+# mrdocs-safe-redis   Up    0.0.0.0:6380->6379/tcp
+# mrdocs-safe-nginx   Up    0.0.0.0:8082->80/tcp
 
 # 验证现有服务状态（应该不受影响）
 systemctl status mysql redis
@@ -240,7 +240,7 @@ URL: http://你的服务器IP:8082
 ### 启动服务
 
 ```bash
-cd ~/mrdocs-safe
+cd ~/mrdocs
 docker-compose up -d
 
 # 或使用管理脚本
@@ -250,7 +250,7 @@ docker-compose up -d
 ### 停止服务
 
 ```bash
-cd ~/mrdocs-safe
+cd ~/mrdocs
 docker-compose down
 
 # 或使用管理脚本
@@ -260,7 +260,7 @@ docker-compose down
 ### 重启服务
 
 ```bash
-cd ~/mrdocs-safe
+cd ~/mrdocs
 docker-compose restart
 
 # 或使用管理脚本
@@ -270,7 +270,7 @@ docker-compose restart
 ### 查看日志
 
 ```bash
-cd ~/mrdocs-safe
+cd ~/mrdocs
 docker-compose logs -f
 
 # 或使用管理脚本
@@ -280,7 +280,7 @@ docker-compose logs -f
 ### 查看服务状态
 
 ```bash
-cd ~/mrdocs-safe
+cd ~/mrdocs
 docker-compose ps
 
 # 或使用管理脚本
@@ -290,13 +290,13 @@ docker-compose ps
 ### 数据备份
 
 ```bash
-cd ~/mrdocs-safe
+cd ~/mrdocs
 
 # 备份MySQL数据
 ./backup.sh
 
 # 手动备份
-docker-compose exec -T mrdoc-safe-mysql mysqldump -uroot -p mrdoc > backup_$(date +%Y%m%d).sql
+docker-compose exec -T mrdocs-safe-mysql mysqldump -uroot -p mrdoc > backup_$(date +%Y%m%d).sql
 ```
 
 ## 🔄 维护操作
@@ -304,35 +304,35 @@ docker-compose exec -T mrdoc-safe-mysql mysqldump -uroot -p mrdoc > backup_$(dat
 ### 更新源码
 
 ```bash
-cd ~/mrdocs-safe
+cd ~/mrdocs
 
 # 拉取最新代码
 git pull origin master
 
 # 重建镜像
-docker-compose build --no-cache mrdoc-safe-app
+docker-compose build --no-cache mrdocs-safe-app
 
 # 重启应用
-docker-compose up -d mrdoc-safe-app
+docker-compose up -d mrdocs-safe-app
 ```
 
 ### 数据库操作
 
 ```bash
 # 进入MySQL容器
-docker-compose exec mrdoc-safe-mysql mysql -uroot -p
+docker-compose exec mrdocs-safe-mysql mysql -uroot -p
 
 # 进入Redis容器
-docker-compose exec mrdoc-safe-redis redis-cli
+docker-compose exec mrdocs-safe-redis redis-cli
 
 # 数据库迁移
-docker-compose exec mrdoc-safe-app python manage.py migrate
+docker-compose exec mrdocs-safe-app python manage.py migrate
 
 # 创建超级用户
-docker-compose exec mrdoc-safe-app python manage.py createsuperuser
+docker-compose exec mrdocs-safe-app python manage.py createsuperuser
 
 # 收集静态文件
-docker-compose exec mrdoc-safe-app python manage.py collectstatic --noinput
+docker-compose exec mrdocs-safe-app python manage.py collectstatic --noinput
 ```
 
 ## 🚨 故障排除
@@ -343,7 +343,7 @@ docker-compose exec mrdoc-safe-app python manage.py collectstatic --noinput
 
 ```bash
 # 查看容器日志
-docker-compose logs mrdoc-safe-app
+docker-compose logs mrdocs-safe-app
 
 # 检查端口占用
 netstat -tulpn | grep -E "(8081|3307|6380|8082)"
@@ -358,7 +358,7 @@ docker-compose up -d
 
 ```bash
 # 检查MySQL容器状态
-docker-compose logs mrdoc-safe-mysql
+docker-compose logs mrdocs-safe-mysql
 
 # 重置数据库
 docker-compose down
@@ -370,38 +370,38 @@ docker-compose up -d
 
 ```bash
 # 检查Redis容器状态
-docker-compose logs mrdoc-safe-redis
+docker-compose logs mrdocs-safe-redis
 
 # 测试Redis连接
-docker-compose exec mrdoc-safe-redis redis-cli ping
+docker-compose exec mrdocs-safe-redis redis-cli ping
 ```
 
 #### 4. 访问权限问题
 
 ```bash
 # 检查文件权限
-ls -la ~/mrdocs-safe/
+ls -la ~/mrdocs/
 
 # 修复权限
-chmod -R 755 ~/mrdocs-safe/
-chown -R $USER:$USER ~/mrdocs-safe/
+chmod -R 755 ~/mrdocs/
+chown -R $USER:$USER ~/mrdocs/
 ```
 
 ### 完全卸载
 
 ```bash
 # 如果需要完全删除MrDoc服务
-cd ~/mrdocs-safe
+cd ~/mrdocs
 
 # 停止并删除所有容器和数据
 docker-compose down -v --remove-orphans
 
 # 删除相关镜像
-docker rmi $(docker images | grep mrdoc-safe | awk '{print $3}')
+docker rmi $(docker images | grep mrdocs-safe | awk '{print $3}')
 
 # 删除项目目录
 cd ~
-rm -rf mrdocs-safe
+rm -rf mrdocs
 
 # 验证现有服务状态（应该完全不受影响）
 systemctl status mysql redis
