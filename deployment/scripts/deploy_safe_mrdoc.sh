@@ -656,8 +656,8 @@ main() {
 
     # 构建和启动
     print_title "构建和启动服务"
-    docker-compose build
-    docker-compose up -d
+    docker-compose -f docker/docker-compose.yml build
+    docker-compose -f docker/docker-compose.yml up -d
 
     # 等待服务启动
     print_message "等待服务启动..."
@@ -665,11 +665,11 @@ main() {
 
     # 数据库迁移
     print_message "执行数据库迁移..."
-    docker-compose exec -T ${CONTAINER_PREFIX}-app python manage.py migrate
+    docker-compose -f docker/docker-compose.yml exec -T ${CONTAINER_PREFIX}-app python manage.py migrate
 
     # 创建超级用户
     print_message "创建管理员账户..."
-    docker-compose exec -T ${CONTAINER_PREFIX}-app python manage.py shell << 'PYEOF'
+    docker-compose -f docker/docker-compose.yml exec -T ${CONTAINER_PREFIX}-app python manage.py shell << 'PYEOF'
 from django.contrib.auth.models import User
 if not User.objects.filter(username='admin').exists():
     User.objects.create_superuser('admin', 'admin@example.com', 'admin123456')
