@@ -624,9 +624,33 @@ main() {
     # 复制部署文件
     if [ ! -d "docker" ]; then
         print_message "复制部署配置..."
-        cp -r "$(dirname "$0")/../docker" ./
-        cp -r "$(dirname "$0")/../nginx" ./
-        cp -r "$(dirname "$0")/../config" ./
+
+        # 使用绝对路径，避免工作目录变化的影响
+        local deployment_dir="$SCRIPT_DIR/.."
+
+        if [ -d "$deployment_dir/docker" ]; then
+            cp -r "$deployment_dir/docker" ./
+            print_message "已复制docker配置"
+        else
+            print_warning "docker配置目录不存在，将创建基础配置"
+            mkdir -p docker
+        fi
+
+        if [ -d "$deployment_dir/nginx" ]; then
+            cp -r "$deployment_dir/nginx" ./
+            print_message "已复制nginx配置"
+        else
+            print_warning "nginx配置目录不存在，将创建基础配置"
+            mkdir -p nginx
+        fi
+
+        if [ -d "$deployment_dir/config" ]; then
+            cp -r "$deployment_dir/config" ./
+            print_message "已复制config配置"
+        else
+            print_warning "config配置目录不存在，将创建基础配置"
+            mkdir -p config
+        fi
     fi
 
     # 创建安全的docker配置
