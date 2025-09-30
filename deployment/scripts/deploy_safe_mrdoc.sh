@@ -410,7 +410,7 @@ services:
   ${CONTAINER_PREFIX}-app:
     build:
       context: ..
-      dockerfile: Dockerfile
+      dockerfile: deployment/docker/Dockerfile.mrdoc
     container_name: ${CONTAINER_PREFIX}-app
     restart: unless-stopped
     ports:
@@ -499,6 +499,7 @@ EOF
       MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
     volumes:
       - ${CONTAINER_PREFIX}_mysql_data:/var/lib/mysql
+      - ./config/my.cnf:/etc/mysql/conf.d/my.cnf
     ports:
       - "${MYSQL_PORT}:3306"
     networks:
@@ -526,11 +527,12 @@ EOF
     restart: unless-stopped
     volumes:
       - ${CONTAINER_PREFIX}_redis_data:/data
+      - ./config/redis.conf:/usr/local/etc/redis/redis.conf
     ports:
       - "${REDIS_PORT}:6379"
     networks:
       - ${CONTAINER_PREFIX}-network
-    command: redis-server --requirepass redis_safe_password_$(date +%s)
+    command: redis-server /usr/local/etc/redis/redis.conf
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 30s
@@ -552,7 +554,7 @@ EOF
       - "${NGINX_HTTPS_PORT}:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf
-      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/mrdoc.conf:/etc/nginx/conf.d/default.conf
       - ./static:/var/www/static
       - ./media:/var/www/media
     networks:
