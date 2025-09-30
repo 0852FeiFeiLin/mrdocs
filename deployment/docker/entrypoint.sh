@@ -46,8 +46,9 @@ echo_info "🔄 执行数据库迁移..."
 python manage.py makemigrations --noinput || echo_warn "makemigrations失败，可能没有新的迁移"
 python manage.py migrate --noinput || { echo_error "数据库迁移失败"; exit 1; }
 
-echo_info "📁 收集静态文件..."
-python manage.py collectstatic --noinput --clear || echo_warn "收集静态文件失败"
+# echo_info "📁 收集静态文件..."
+# python manage.py collectstatic --noinput --clear || echo_warn "收集静态文件失败"
+# 注释原因：静态文件已在 static/ 目录，Nginx 直接读取，无需收集
 
 echo_info "👤 创建超级用户..."
 python manage.py shell << PYTHON_EOF
