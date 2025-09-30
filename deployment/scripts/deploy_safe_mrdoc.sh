@@ -465,9 +465,16 @@ EOF
       - DJANGO_SUPERUSER_USERNAME=admin
       - DJANGO_SUPERUSER_EMAIL=admin@example.com
       - DJANGO_SUPERUSER_PASSWORD=admin123456
+      - REDIS_DB=4
       - TZ=Asia/Shanghai
     networks:
       - ${CONTAINER_PREFIX}-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
     depends_on:
 EOF
 
@@ -648,6 +655,14 @@ echo_error() {
 
 echo_info "🚀 启动 MrDoc 应用..."
 
+# 显示环境变量调试信息
+echo_info "环境配置:"
+echo "  DB_HOST=$DB_HOST"
+echo "  DB_PORT=$DB_PORT"
+echo "  DB_NAME=$DB_NAME"
+echo "  DB_USER=$DB_USER"
+echo "  REDIS_HOST=$REDIS_HOST"
+
 # 使用Python检查数据库连接
 echo_info "⏳ 等待数据库服务启动..."
 python << 'PYTHON_EOF'
@@ -717,11 +732,11 @@ PYTHON_EOF
 
 # Django操作
 echo_info "🔄 执行数据库迁移..."
-python manage.py makemigrations --noinput
-python manage.py migrate --noinput
+python manage.py makemigrations --noinput || echo_warn "makemigrations失败，可能没有新的迁移"
+python manage.py migrate --noinput || { echo_error "数据库迁移失败"; exit 1; }
 
 echo_info "📁 收集静态文件..."
-python manage.py collectstatic --noinput --clear
+python manage.py collectstatic --noinput --clear || echo_warn "收集静态文件失败"
 
 echo_info "👤 创建超级用户..."
 python manage.py shell << PYTHON_EOF
@@ -765,7 +780,7 @@ RUN apt-get update && apt-get install -y \
     default-mysql-client \
     libssl-dev libffi-dev \
     libjpeg-dev libpng-dev libwebp-dev zlib1g-dev \
-    git curl wget vim \
+    git curl wget vim netcat-openbsd \
     && rm -rf /var/lib/apt/lists/*
 
 # 创建非root用户
@@ -866,13 +881,12 @@ EOF
 
     # 等待服务启动
     print_message "等待服务启动..."
-    sleep 60
 
     # 检查MySQL是否就绪
-    print_message "检查MySQL服务状态..."
     if [ "$USE_EXTERNAL_MYSQL" = "false" ]; then
+        print_message "检查MySQL服务状态..."
         for i in {1..30}; do
-            if docker-compose -f deployment/docker/docker-compose.yml exec -T ${CONTAINER_PREFIX}-mysql mysqladmin ping -h localhost --silent 2>/dev/null; then
+            if docker exec ${CONTAINER_PREFIX}-mysql mysqladmin ping -h localhost --silent 2>/dev/null; then
                 print_success "MySQL服务已就绪"
                 break
             fi
@@ -882,18 +896,28 @@ EOF
         echo
     fi
 
-    # 数据库迁移
-    print_message "执行数据库迁移..."
-    docker-compose -f deployment/docker/docker-compose.yml exec -T ${CONTAINER_PREFIX}-app python manage.py migrate
+    # 等待应用容器完全启动（entrypoint.sh会自动执行迁移和创建用户）
+    print_message "等待应用初始化完成..."
+    for i in {1..60}; do
+        # 检查容器是否正在运行且健康
+        container_status=$(docker inspect ${CONTAINER_PREFIX}-app --format='{{.State.Status}}' 2>/dev/null || echo "not_found")
 
-    # 创建超级用户
-    print_message "创建管理员账户..."
-    docker-compose -f deployment/docker/docker-compose.yml exec -T ${CONTAINER_PREFIX}-app python manage.py shell << 'PYEOF'
-from django.contrib.auth.models import User
-if not User.objects.filter(username='admin').exists():
-    User.objects.create_superuser('admin', 'admin@example.com', 'admin123456')
-    print('管理员用户创建成功')
-PYEOF
+        if [ "$container_status" = "running" ]; then
+            # 测试应用是否响应
+            if curl -s -o /dev/null -w "%{http_code}" http://localhost:${MRDOC_PORT} 2>/dev/null | grep -qE "200|301|302"; then
+                print_success "应用初始化完成"
+                break
+            fi
+        fi
+
+        echo -n "."
+        sleep 2
+    done
+    echo
+
+    # 显示容器日志的最后几行
+    print_message "应用启动日志："
+    docker logs ${CONTAINER_PREFIX}-app --tail 20
 
     # 显示部署结果
     print_title "部署完成"
