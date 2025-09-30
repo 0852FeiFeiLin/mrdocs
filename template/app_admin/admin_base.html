@@ -24,7 +24,7 @@
 		</div>
 		{% endif %}
 		<!-- 系统版本更新提示 -->
-		<div class="layui-card" style="display: none;" id="is_update_tips">
+		<!-- <div class="layui-card" style="display: none;" id="is_update_tips">
 			<div class="layui-card-body">
 				<div class="layui-card-header">
 					<span style="color:red;font-weight:700;"><i class="layui-icon layui-icon-tips"></i> {% trans "MrDoc 已发布新版本，点击查看" %}
@@ -33,7 +33,7 @@
 					</span>
 				</div>
 			</div>
-		</div>
+		</div> -->
 		{% block content %}
         {% endblock %}
 		<script src="{% static 'PearAdminLayui/component/layui/layui.js' %}?version={{mrdoc_version}}"></script>
