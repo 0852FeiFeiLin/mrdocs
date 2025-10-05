@@ -19,6 +19,7 @@ from app_doc.models import Project, Doc, DocHistory, Image, ProjectCollaborator
 from app_api.serializers_app import ImageSerializer,ProjectSerializer
 from app_api.utils import read_add_projects,remove_doc_tag
 from loguru import logger
+from haystack.query import SearchQuerySet
 import time,hashlib
 import traceback,json
 import datetime
@@ -155,11 +156,23 @@ def get_projects(request):
             view_list = read_add_projects(token.user)
 
         # 查询符合条件的文集
+        view_list = list(view_list)
+        view_set = set(view_list)
         if kw == '':
             projects = Project.objects.filter(id__in=view_list).order_by(f'{sort}{sort_name}')
         else:
-            projects = Project.objects.filter(Q(name__icontains=kw) | Q(intro__icontains=kw),
-                                              id__in=view_list).order_by(f'{sort}{sort_name}')
+            try:
+                sqs = SearchQuerySet().models(Project).auto_query(kw)
+                matched_ids = [int(result.pk) for result in sqs if int(result.pk) in view_set]
+                if matched_ids:
+                    projects = Project.objects.filter(id__in=matched_ids).order_by(f'{sort}{sort_name}')
+                else:
+                    projects = Project.objects.filter(Q(name__icontains=kw) | Q(intro__icontains=kw),
+                                                      id__in=view_list).order_by(f'{sort}{sort_name}')
+            except Exception as e:
+                logger.exception("全文检索获取文集异常")
+                projects = Project.objects.filter(Q(name__icontains=kw) | Q(intro__icontains=kw),
+                                                  id__in=view_list).order_by(f'{sort}{sort_name}')
 
         project_list =  []
         for project in projects:
@@ -339,9 +352,16 @@ def get_self_docs(request):
         if kw == '':
             docs = Doc.objects.filter(create_user=token.user,status=1).order_by('{}modify_time'.format(sort))
         else:
-            # kw_list = jieba.cut(kw, cut_all=True)
-            # reduce(operator.or_,(Q(name__icontains=x) for x in kw_list))
-            docs = Doc.objects.filter(create_user=token.user,status=1,name__icontains=kw).order_by('{}modify_time'.format(sort))
+            try:
+                sqs = SearchQuerySet().models(Doc).filter(create_user=token.user.id).auto_query(kw)
+                doc_ids = [int(result.pk) for result in sqs]
+                if doc_ids:
+                    docs = Doc.objects.filter(create_user=token.user,status=1,id__in=doc_ids).order_by('{}modify_time'.format(sort))
+                else:
+                    docs = Doc.objects.filter(create_user=token.user,status=1,name__icontains=kw).order_by('{}modify_time'.format(sort))
+            except Exception as e:
+                logger.exception("全文检索获取文档异常")
+                docs = Doc.objects.filter(create_user=token.user,status=1,name__icontains=kw).order_by('{}modify_time'.format(sort))
 
         # 分页处理
         paginator = Paginator(docs, limit)

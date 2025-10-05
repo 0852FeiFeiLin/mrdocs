@@ -1,0 +1,5 @@
+{{ object.name }}
+{{ object.intro }}
+{% for colla in object.projectcollaborator_set.all %}
+{{ colla.user.username }}
+{% endfor %}
