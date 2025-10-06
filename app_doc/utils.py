@@ -1,4 +1,5 @@
 from app_doc.models import Doc,Project,ProjectCollaborator
+from haystack import connections
 from django.core.validators import URLValidator
 from django.core.exceptions import ValidationError
 from django.contrib.auth.models import User
@@ -61,6 +62,15 @@ def find_doc_parent_sibling(doc_id):
         else:
             next_doc = find_doc_parent_sibling(doc.parent_doc,sort)
     return next_doc
+
+
+# 更新指定文档的搜索索引，确保 Whoosh 与数据库保持一致
+def refresh_doc_index(doc_ids):
+    if not doc_ids:
+        return
+    index = connections['default'].get_unified_index().get_index(Doc)
+    for doc in Doc.objects.filter(id__in=set(doc_ids)):
+        index.update_object(doc)
 
 
 # 查找文档的上一篇文档

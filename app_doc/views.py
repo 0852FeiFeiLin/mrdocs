@@ -22,7 +22,7 @@ from django.utils.translation import gettext_lazy as _
 from loguru import logger
 from app_api.serializers_app import *
 from app_doc.report_utils import *
-from app_doc.utils import check_user_project_writer_role
+from app_doc.utils import check_user_project_writer_role, refresh_doc_index
 from app_admin.models import UserOptions,SysSetting
 from app_admin.decorators import check_headers,allow_report_file
 from app_admin.utils import is_zip_bomb
@@ -989,9 +989,11 @@ def manage_project_transfer(request,pro_id):
                 pro.create_user = transfer_user
                 pro.save()
                 # 修改文集文档的创建者
+                doc_ids = list(Doc.objects.filter(create_user=init_user, top_doc=pro_id).values_list('id', flat=True))
                 Doc.objects.filter(create_user=init_user,top_doc=pro_id).update(
                     create_user=transfer_user
                 )
+                refresh_doc_index(doc_ids)
                 return JsonResponse({'status':True,'data':'ok'})
 
             except:
@@ -1349,19 +1351,18 @@ def modify_doc(request,doc_id):
                                 pre_content = doc.pre_content,
                                 create_user = request.user
                             )
-                            # 更新文档内容
-                            Doc.objects.filter(id=int(doc_id)).update(
-                                name=doc_name,
-                                content=doc_content,
-                                pre_content=pre_content,
-                                parent_doc=int(parent_doc) if parent_doc != '' else 0,
-                                sort=sort if sort != '' else 9999,
-                                modify_time = datetime.datetime.now(),
-                                status = status,
-                                editor_mode = editor_mode,
-                                open_children = open_children,
-                                show_children = show_children
-                            )
+                            # 使用 save() 触发 Haystack 实时信号，避免 QuerySet.update 漏掉索引刷新
+                            doc.name = doc_name
+                            doc.content = doc_content
+                            doc.pre_content = pre_content
+                            doc.parent_doc = int(parent_doc) if parent_doc != '' else 0
+                            doc.sort = int(sort) if sort != '' else 9999
+                            doc.status = int(status)
+                            doc.editor_mode = int(editor_mode)
+                            doc.open_children = open_children
+                            doc.show_children = show_children
+                            doc.save()
+                            refresh_doc_index([doc.id])
                             # 更新文档标签
                             doc_tag_list = doc_tags.split(",") if doc_tags != "" else []
                             # print(doc_tags,doc_tag_list)
@@ -1622,6 +1623,7 @@ def move_doc(request):
             Doc.objects.filter(id=int(doc_id)).update(parent_doc=int(parent_id),top_doc=int(pro_id))
             # 修改其子文档为顶级文档
             Doc.objects.filter(parent_doc=doc_id).update(parent_doc=0)
+            refresh_doc_index([int(doc_id)])
             return JsonResponse({'status':True,'data':{'pro_id':pro_id,'doc_id':doc_id}})
         except:
             logger.exception(_("移动文档异常"))
@@ -1633,10 +1635,15 @@ def move_doc(request):
             Doc.objects.filter(id=int(doc_id)).update(parent_doc=int(parent_id), top_doc=int(pro_id))
             # 修改其子文档的文集归属
             child_doc = Doc.objects.filter(parent_doc=doc_id)
+            child_ids = list(child_doc.values_list('id', flat=True))
             child_doc.update(top_doc=int(pro_id))
             # 遍历子文档，如果其存在下级文档，那么继续修改所属文集
+            affected_ids = {int(doc_id)}.union(set(child_ids))
             for child in child_doc:
+                grandchild_ids = list(Doc.objects.filter(parent_doc=child.id).values_list('id', flat=True))
                 Doc.objects.filter(parent_doc=child.id).update(top_doc=int(pro_id))
+                affected_ids.update(grandchild_ids)
+            refresh_doc_index(affected_ids)
             return JsonResponse({'status': True, 'data':{'pro_id':pro_id,'doc_id':doc_id}})
         except:
             logger.exception(_("移动包含下级的文档异常"))

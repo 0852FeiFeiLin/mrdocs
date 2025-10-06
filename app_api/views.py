@@ -355,10 +355,10 @@ def get_self_docs(request):
         sort = ''
     try:
         token = UserToken.objects.get(token=token)
-        # 可访问的文集
+        # 汇总用户具备访问权限的文集，合并公开文集，确保权限校验与页面一致
         view_list = read_add_projects(token.user)
-        public_projects = list(Project.objects.filter(role=0).values_list('id', flat=True))
-        accessible_projects = list(set(view_list).union(set(public_projects)))
+        public_projects = Project.objects.filter(role=0).values_list('id', flat=True)
+        accessible_projects = set(view_list).union(set(public_projects))
 
         doc_permission_q = Q(create_user=token.user)
         if accessible_projects:
@@ -371,24 +371,29 @@ def get_self_docs(request):
         else:
             doc_ids = set()
             try:
+                # whoosh 索引偶尔丢增量，对全文检索与数据库模糊查询取并集避免漏文档
                 own_sqs = SearchQuerySet().models(Doc).filter(create_user=token.user.id).auto_query(kw)
                 doc_ids.update(int(result.pk) for result in own_sqs)
 
                 if accessible_projects:
                     colla_sqs = SearchQuerySet().models(Doc).filter(top_doc__in=accessible_projects).auto_query(kw)
                     doc_ids.update(int(result.pk) for result in colla_sqs)
-
             except Exception:
                 logger.exception("全文检索获取文档异常")
 
-            if doc_ids:
-                docs = base_docs.filter(id__in=doc_ids).order_by('{}modify_time'.format(sort)).distinct()
-            else:
-                docs = base_docs.filter(
+            fallback_ids = set(
+                base_docs.filter(
                     Q(name__icontains=kw) |
                     Q(content__icontains=kw) |
                     Q(pre_content__icontains=kw)
-                ).order_by('{}modify_time'.format(sort)).distinct()
+                ).values_list('id', flat=True)
+            )
+
+            matched_ids = doc_ids.union(fallback_ids)
+            if matched_ids:
+                docs = base_docs.filter(id__in=matched_ids).order_by('{}modify_time'.format(sort)).distinct()
+            else:
+                docs = base_docs.none()
 
         # 分页处理
         paginator = Paginator(docs, limit)
