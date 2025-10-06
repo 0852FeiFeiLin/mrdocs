@@ -148,12 +148,13 @@ def get_projects(request):
     try:
         token = UserToken.objects.get(token=token)
         if filter == 'self':  # 自己的文集
-            view_list = Project.objects.filter(create_user=token.user).values_list('id', flat=True)
+            view_list = list(Project.objects.filter(create_user=token.user).values_list('id', flat=True))
         elif filter == 'colla':  # 协作的文集
-            view_list = ProjectCollaborator.objects.filter(user=token.user).values_list('project_id', flat=True)
-        else:  # 自己和协作的文集
-            # 用户有浏览和新增权限的文集列表
-            view_list = read_add_projects(token.user)
+            view_list = list(ProjectCollaborator.objects.filter(user=token.user).values_list('project_id', flat=True))
+        else:  # 自己和协作的文集 + 公共文集
+            own_list = read_add_projects(token.user)
+            public_list = list(Project.objects.filter(role=0).values_list('id', flat=True))
+            view_list = list(set(own_list).union(set(public_list)))
 
         # 查询符合条件的文集
         view_list = list(view_list)
@@ -161,16 +162,22 @@ def get_projects(request):
         if kw == '':
             projects = Project.objects.filter(id__in=view_list).order_by(f'{sort}{sort_name}')
         else:
+            matched_ids = set()
             try:
                 sqs = SearchQuerySet().models(Project).auto_query(kw)
-                matched_ids = [int(result.pk) for result in sqs if int(result.pk) in view_set]
-                if matched_ids:
-                    projects = Project.objects.filter(id__in=matched_ids).order_by(f'{sort}{sort_name}')
-                else:
-                    projects = Project.objects.filter(Q(name__icontains=kw) | Q(intro__icontains=kw),
-                                                      id__in=view_list).order_by(f'{sort}{sort_name}')
-            except Exception as e:
+                matched_ids.update(int(result.pk) for result in sqs if int(result.pk) in view_set)
+            except Exception:
                 logger.exception("全文检索获取文集异常")
+
+            try:
+                doc_sqs = SearchQuerySet().models(Doc).auto_query(kw)
+                matched_ids.update(int(result.top_doc) for result in doc_sqs if int(result.top_doc) in view_set)
+            except Exception:
+                logger.exception("全文检索获取文集(文档命中)异常")
+
+            if matched_ids:
+                projects = Project.objects.filter(id__in=matched_ids).order_by(f'{sort}{sort_name}')
+            else:
                 projects = Project.objects.filter(Q(name__icontains=kw) | Q(intro__icontains=kw),
                                                   id__in=view_list).order_by(f'{sort}{sort_name}')
 
@@ -348,20 +355,40 @@ def get_self_docs(request):
         sort = ''
     try:
         token = UserToken.objects.get(token=token)
-        # 按文档修改时间进行排序
+        # 可访问的文集
+        view_list = read_add_projects(token.user)
+        public_projects = list(Project.objects.filter(role=0).values_list('id', flat=True))
+        accessible_projects = list(set(view_list).union(set(public_projects)))
+
+        doc_permission_q = Q(create_user=token.user)
+        if accessible_projects:
+            doc_permission_q |= Q(top_doc__in=accessible_projects)
+
+        base_docs = Doc.objects.filter(doc_permission_q, status=1)
+
         if kw == '':
-            docs = Doc.objects.filter(create_user=token.user,status=1).order_by('{}modify_time'.format(sort))
+            docs = base_docs.order_by('{}modify_time'.format(sort)).distinct()
         else:
+            doc_ids = set()
             try:
-                sqs = SearchQuerySet().models(Doc).filter(create_user=token.user.id).auto_query(kw)
-                doc_ids = [int(result.pk) for result in sqs]
-                if doc_ids:
-                    docs = Doc.objects.filter(create_user=token.user,status=1,id__in=doc_ids).order_by('{}modify_time'.format(sort))
-                else:
-                    docs = Doc.objects.filter(create_user=token.user,status=1,name__icontains=kw).order_by('{}modify_time'.format(sort))
-            except Exception as e:
+                own_sqs = SearchQuerySet().models(Doc).filter(create_user=token.user.id).auto_query(kw)
+                doc_ids.update(int(result.pk) for result in own_sqs)
+
+                if accessible_projects:
+                    colla_sqs = SearchQuerySet().models(Doc).filter(top_doc__in=accessible_projects).auto_query(kw)
+                    doc_ids.update(int(result.pk) for result in colla_sqs)
+
+            except Exception:
                 logger.exception("全文检索获取文档异常")
-                docs = Doc.objects.filter(create_user=token.user,status=1,name__icontains=kw).order_by('{}modify_time'.format(sort))
+
+            if doc_ids:
+                docs = base_docs.filter(id__in=doc_ids).order_by('{}modify_time'.format(sort)).distinct()
+            else:
+                docs = base_docs.filter(
+                    Q(name__icontains=kw) |
+                    Q(content__icontains=kw) |
+                    Q(pre_content__icontains=kw)
+                ).order_by('{}modify_time'.format(sort)).distinct()
 
         # 分页处理
         paginator = Paginator(docs, limit)
