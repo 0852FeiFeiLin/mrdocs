@@ -23,6 +23,33 @@ from haystack.query import SearchQuerySet
 import time,hashlib
 import traceback,json
 import datetime
+import re
+
+
+def _split_search_terms(keyword):
+    if not keyword:
+        return []
+    tokens = [term for term in re.split(r'[\s,，、;；]+', keyword) if term]
+    if not tokens:
+        tokens = [keyword]
+    seen = set()
+    unique_tokens = []
+    for token in tokens:
+        if token not in seen:
+            seen.add(token)
+            unique_tokens.append(token)
+    return unique_tokens
+
+
+def _build_field_or_query(fields, keywords):
+    combined_query = None
+    for keyword in keywords:
+        field_query = None
+        for field in fields:
+            condition = Q(**{f'{field}__icontains': keyword})
+            field_query = condition if field_query is None else (field_query | condition)
+        combined_query = field_query if combined_query is None else (combined_query | field_query)
+    return combined_query
 
 # MrDoc 基于用户的Token访问API模块
 
@@ -178,8 +205,11 @@ def get_projects(request):
             if matched_ids:
                 projects = Project.objects.filter(id__in=matched_ids).order_by(f'{sort}{sort_name}')
             else:
-                projects = Project.objects.filter(Q(name__icontains=kw) | Q(intro__icontains=kw),
-                                                  id__in=view_list).order_by(f'{sort}{sort_name}')
+                keywords = _split_search_terms(kw)
+                project_query = _build_field_or_query(['name', 'intro'], keywords)
+                if project_query is None:
+                    project_query = Q(name__icontains=kw) | Q(intro__icontains=kw)
+                projects = Project.objects.filter(project_query, id__in=view_list).order_by(f'{sort}{sort_name}')
 
         project_list =  []
         for project in projects:
@@ -381,12 +411,16 @@ def get_self_docs(request):
             except Exception:
                 logger.exception("全文检索获取文档异常")
 
-            fallback_ids = set(
-                base_docs.filter(
+            keywords = _split_search_terms(kw)
+            doc_fallback_query = _build_field_or_query(['name', 'content', 'pre_content'], keywords)
+            if doc_fallback_query is None:
+                doc_fallback_query = (
                     Q(name__icontains=kw) |
                     Q(content__icontains=kw) |
                     Q(pre_content__icontains=kw)
-                ).values_list('id', flat=True)
+                )
+            fallback_ids = set(
+                base_docs.filter(doc_fallback_query).values_list('id', flat=True)
             )
 
             matched_ids = doc_ids.union(fallback_ids)
