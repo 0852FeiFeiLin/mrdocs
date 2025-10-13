@@ -1,6 +1,7 @@
 {% load static %}
 <link rel="stylesheet" href="{% static 'mr-editor/mreditor.css' %}?version={{mrdoc_version}}" />
 <script src="{% static 'mr-marked/marked.min.js' %}?version={{mrdoc_version}}"></script>
+<script src="{% static 'mr-marked/mermaid-patch.js' %}?version={{mrdoc_version}}"></script>
 <script src="{% static 'mr-editor/mreditor.js' %}?version={{mrdoc_version}}"></script>
 <script>
     // 视频iframe域名白名单

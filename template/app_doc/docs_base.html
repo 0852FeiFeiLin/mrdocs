@@ -436,6 +436,7 @@
 <script src="{% static 'vditor/dist/method.min.js' %}?version={{mrdoc_version}}"></script>
 {% elif doc.editor_mode == 1 %}
 <script src="{% static 'mr-marked/marked.min.js' %}?version={{mrdoc_version}}"></script>
+<script src="{% static 'mr-marked/mermaid-patch.js' %}?version={{mrdoc_version}}"></script>
 {% elif doc.editor_mode == 4 %}
 <!-- 在线表格 -->
 <script src="{% static 'luckysheet/dist/plugins/js/plugin.js' %}?version={{mrdoc_version}}"></script>
