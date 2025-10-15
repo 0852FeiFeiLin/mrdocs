@@ -178,10 +178,11 @@ def get_projects(request):
             view_list = list(Project.objects.filter(create_user=token.user).values_list('id', flat=True))
         elif filter == 'colla':  # 协作的文集
             view_list = list(ProjectCollaborator.objects.filter(user=token.user).values_list('project_id', flat=True))
-        else:  # 自己和协作的文集 + 公共文集
+        else:  # 自己和协作的文集范围
             own_list = read_add_projects(token.user)
-            public_list = list(Project.objects.filter(role=0).values_list('id', flat=True))
-            view_list = list(set(own_list).union(set(public_list)))
+            # public_list = list(Project.objects.filter(role=0).values_list('id', flat=True))
+            # view_list = list(set(own_list).union(set(public_list)))
+            view_list = list(own_list)
 
         # 查询符合条件的文集
         view_list = list(view_list)
@@ -385,10 +386,11 @@ def get_self_docs(request):
         sort = ''
     try:
         token = UserToken.objects.get(token=token)
-        # 汇总用户具备访问权限的文集，合并公开文集，确保权限校验与页面一致
+        # 汇总用户具备访问权限的文集
         view_list = read_add_projects(token.user)
-        public_projects = Project.objects.filter(role=0).values_list('id', flat=True)
-        accessible_projects = set(view_list).union(set(public_projects))
+        # public_projects = Project.objects.filter(role=0).values_list('id', flat=True)
+        # accessible_projects = set(view_list).union(set(public_projects))
+        accessible_projects = set(view_list)
 
         doc_permission_q = Q(create_user=token.user)
         if accessible_projects:
