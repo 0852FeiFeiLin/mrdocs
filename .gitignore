@@ -117,3 +117,4 @@ dmypy.json
 
 .idea/
 whoosh_index
+mrdoc_data.json
