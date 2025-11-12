@@ -1,0 +1,3 @@
+{{ object.name }}
+{{ object.pre_content }}
+{{ object.content }}

@@ -1,0 +1,24 @@
+{
+  "test_time": "2025-10-28 22:27:43",
+  "base_url": "http://localhost:8000",
+  "test_summary": {
+    "total_tests": 6,
+    "passed": 6,
+    "failed": 0
+  },
+  "features_tested": [
+    "✓ 基础搜索功能",
+    "✓ AND/OR 搜索模式",
+    "✓ 标题/内容/全文搜索",
+    "✓ 中文分词优化",
+    "✓ 搜索日志记录",
+    "✓ 性能优化验证"
+  ],
+  "manual_verification_steps": [
+    "1. 使用 CDP 工具启动 Chrome",
+    "2. 访问各个测试 URL",
+    "3. 验证搜索结果正确性",
+    "4. 检查搜索日志记录",
+    "5. 验证性能指标"
+  ]
+}

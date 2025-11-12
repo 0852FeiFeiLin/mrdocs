@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  mrdoc:
+    build:
+      context: .
+      dockerfile: Dockerfile.dsm
+    container_name: mrdoc-dsm
+    ports:
+      - "8000:8000"
+    volumes:
+      # 数据持久化 - 挂载到DSM的共享文件夹
+      - ./data/db:/app/db.sqlite3
+      - ./data/media:/app/media
+      - ./data/log:/app/log
+      - ./data/whoosh_index:/app/whoosh_index
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DJANGO_SETTINGS_MODULE=MrDoc.settings
+      - TZ=Asia/Shanghai
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000\")' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+# 注意事项:
+# 1. 首次启动会自动导入128个文档和29个文集
+# 2. 数据会持久化到./data目录
+# 3. 访问地址: http://你的DSM地址:8000
+# 4. 管理员账号: admin / admin123

@@ -1,0 +1,125 @@
+name: Deploy MrDoc to Auto-Payout Server
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      GH_DEPLOY_TOKEN: ${{ secrets.GH_DEPLOY_TOKEN }}
+      MRDOC_HTTP_PORT: ${{ secrets.MRDOC_HTTP_PORT }}
+      MRDOC_HTTPS_PORT: ${{ secrets.MRDOC_HTTPS_PORT }}
+      MRDOC_REDIS_PORT: ${{ secrets.MRDOC_REDIS_PORT }}
+      MRDOC_REDIS_PASSWORD: ${{ secrets.MRDOC_REDIS_PASSWORD }}
+      DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
+      DJANGO_SUPERUSER_USERNAME: ${{ secrets.DJANGO_SUPERUSER_USERNAME }}
+      DJANGO_SUPERUSER_EMAIL: ${{ secrets.DJANGO_SUPERUSER_EMAIL }}
+      DJANGO_SUPERUSER_PASSWORD: ${{ secrets.DJANGO_SUPERUSER_PASSWORD }}
+      DJANGO_ALLOWED_HOSTS: ${{ secrets.DJANGO_ALLOWED_HOSTS }}
+      TZ: ${{ secrets.SERVER_TZ }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          port: ${{ env.DEPLOY_PORT }}
+          username: ${{ env.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          timeout: 180s
+          script: |
+            set -euo pipefail
+
+            if [ -z "${GH_DEPLOY_TOKEN:-}" ]; then
+              echo "GH_DEPLOY_TOKEN secret is required for git operations." >&2
+              exit 1
+            fi
+
+            export ROOT_DIR=/opt/mrdoc
+            export REPO_URL="https://x-access-token:${GH_DEPLOY_TOKEN}@github.com/D36u99er/mrdoc.git"
+
+            # 保证仓库在目标机可用（首次 clone，后续 reset）
+            if [ ! -d "${ROOT_DIR}/.git" ]; then
+              mkdir -p "${ROOT_DIR}"
+              git clone --depth 1 "${REPO_URL}" "${ROOT_DIR}"
+            else
+              git -C "${ROOT_DIR}" remote set-url origin "${REPO_URL}"
+              git -C "${ROOT_DIR}" fetch origin main --depth 1
+              git -C "${ROOT_DIR}" reset --hard origin/main
+            fi
+
+            # 准备持久化目录以避免容器初始化失败
+            mkdir -p "${ROOT_DIR}/media" "${ROOT_DIR}/log" "${ROOT_DIR}/config"
+
+            export MRDOC_HTTP_PORT="${MRDOC_HTTP_PORT:-19081}"
+            export MRDOC_HTTPS_PORT="${MRDOC_HTTPS_PORT:-19443}"
+            export MRDOC_REDIS_PORT="${MRDOC_REDIS_PORT:-16380}"
+            export MRDOC_REDIS_PASSWORD="${MRDOC_REDIS_PASSWORD:-redispassword123}"
+            export DJANGO_SECRET_KEY="${DJANGO_SECRET_KEY:-django_safe_secret_V1y8fM5Jm4br4p41w0ZSI98X5uP7}"
+            export DJANGO_SUPERUSER_USERNAME="${DJANGO_SUPERUSER_USERNAME:-admin}"
+            export DJANGO_SUPERUSER_EMAIL="${DJANGO_SUPERUSER_EMAIL:-admin@example.com}"
+            export DJANGO_SUPERUSER_PASSWORD="${DJANGO_SUPERUSER_PASSWORD:-admin123456}"
+            export DJANGO_ALLOWED_HOSTS="${DJANGO_ALLOWED_HOSTS:-138.128.220.113}"
+            export TZ="${TZ:-Asia/Shanghai}"
+
+            echo "Deploying MrDoc with HTTP=${MRDOC_HTTP_PORT}, HTTPS=${MRDOC_HTTPS_PORT}, Redis=${MRDOC_REDIS_PORT}"
+
+            check_port_conflict() {
+              local port="$1"
+              local label="$2"
+
+              # 检查是否被其他容器占用
+              local publishers
+              publishers="$(docker ps --filter "publish=${port}" --format '{{.Names}}' | paste -sd',' - || true)"
+              if [ -n "$publishers" ]; then
+                if echo "$publishers" | grep -qE 'mrdocs-safe-(nginx|redis)'; then
+                  echo "Port ${port} (${label}) is currently published by ${publishers},继续复用。"
+                  return 0
+                fi
+                echo "Port ${port} (${label}) 已被容器 ${publishers} 占用，请调整 MRDOC_${label}_PORT Secret。" >&2
+                exit 1
+              fi
+
+              # 检查是否被宿主机进程占用
+              local listener=""
+              if command -v ss >/dev/null 2>&1; then
+                listener="$(ss -tulnp | awk -v p=":${port}" '$5 ~ p {print $0}' | head -n1 || true)"
+              elif command -v netstat >/dev/null 2>&1; then
+                listener="$(netstat -tulnp 2>/dev/null | awk -v p=":${port}" '$4 ~ p {print $0}' | head -n1 || true)"
+              fi
+
+              if [ -n "$listener" ]; then
+                echo "Port ${port} (${label}) 已被宿主机进程占用: ${listener}" >&2
+                echo "请调整 Secrets 中的 MRDOC_${label}_PORT 或释放端口后重试。" >&2
+                exit 1
+              fi
+            }
+
+            check_port_conflict "${MRDOC_HTTP_PORT}" "HTTP"
+            check_port_conflict "${MRDOC_HTTPS_PORT}" "HTTPS"
+            check_port_conflict "${MRDOC_REDIS_PORT}" "REDIS"
+
+            cd "${ROOT_DIR}/deployment/docker"
+
+            if command -v docker compose >/dev/null 2>&1; then
+              DOCKER_COMPOSE_BIN="docker compose"
+            elif command -v docker-compose >/dev/null 2>&1; then
+              DOCKER_COMPOSE_BIN="docker-compose"
+            else
+              echo "docker compose or docker-compose is required on the target host." >&2
+              exit 1
+            fi
+
+            # 拉取镜像缓存并更新服务
+            ${DOCKER_COMPOSE_BIN} pull || true
+            ${DOCKER_COMPOSE_BIN} up -d --build
+            ${DOCKER_COMPOSE_BIN} ps

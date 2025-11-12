@@ -1,0 +1,20 @@
+======================================================================
+  从在线 MrDoc 系统同步文档
+  时间: 2025-10-28 22:40:34
+======================================================================
+✓ 使用管理员账户: admin
+
+获取在线文集列表...
+✓ 获取到 30 个文集
+
+同步文集: Agentapi 开发 (ID: 62)
+  ✓ 文集已存在: Agentapi 开发
+  找到 10 个文档
+Traceback (most recent call last):
+  File "/Users/x/mrdoc-dev/sync_docs_from_online.py", line 202, in <module>
+    sys.exit(main())
+  File "/Users/x/mrdoc-dev/sync_docs_from_online.py", line 182, in main
+    synced_count = sync_project(project, admin_user)
+  File "/Users/x/mrdoc-dev/sync_docs_from_online.py", line 134, in sync_project
+    'pre_content': doc_detail.get('content', '')[:200],
+TypeError: 'NoneType' object is not subscriptable
